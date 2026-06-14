@@ -140,7 +140,7 @@ print_next_steps() {
     if [ "$(uname)" = "Linux" ]; then
         echo "  Linux — for the system-wide hotkey daemon, also install:"
         echo "     X11:     sudo apt install xclip xdotool"
-        echo "     Wayland: sudo apt install wl-clipboard   (+ add yourself to the 'input' group)"
+        echo "     Wayland: sudo apt install wl-clipboard ydotool   (+ add yourself to the 'input' group)"
         echo "     and:     pipx inject promptune python-xlib dbus-next evdev"
         echo ""
     fi

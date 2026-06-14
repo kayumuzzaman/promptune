@@ -118,7 +118,7 @@ The **CLI runs in every terminal and OS** — it's a plain Python program. The c
 | **CLI** (`enhance` / `score` / `doctor` …) | ✅ | ✅ | ✅ | Python 3.9+; any terminal emulator |
 | **Interactive TUI** (Accept/Edit/Reject) | ✅ | ✅ | ✅ | a real TTY (ANSI) — degrades in pipes |
 | **Shell widget** (Ctrl+E inline) | ✅ | ✅ | ⚠️ via WSL / Git Bash | **zsh / bash / fish** only — ❌ Warp, PowerShell, nushell, cmd |
-| **System daemon** (Ctrl+Shift+E global) | ✅ | ✅ X11 / Wayland | ❌ | macOS: Accessibility grant · Linux X11: `xclip` + `xdotool` · Wayland: `wl-clipboard` + `input` group |
+| **System daemon** (Ctrl+Shift+E global) | ✅ | ✅ X11 / Wayland | ❌ | macOS: Accessibility grant · Linux X11: `xclip` + `xdotool` · Wayland: `wl-clipboard` + `ydotool` + `input` group |
 | **Auto-enhance hook** (silent gate) | ✅ | ✅ | ✅ | tool exposing a `UserPromptSubmit` hook → **Claude Code, Codex** |
 | **MCP server** | ✅ | ✅ | ✅ | any MCP client (Claude Code, Cursor, Codex …) |
 
@@ -148,7 +148,7 @@ The Linux system-wide hotkey daemon also needs OS tools:
 
 ```bash
 sudo apt install xclip xdotool        # X11
-sudo apt install wl-clipboard         # Wayland (+ add yourself to the 'input' group)
+sudo apt install wl-clipboard ydotool # Wayland (+ add yourself to the 'input' group)
 ```
 
 ### One-line installer (macOS + Linux)
@@ -529,7 +529,7 @@ promptune daemon install   # auto-start at login (LaunchAgent / systemd)
 promptune daemon status    # confirm it's running
 ```
 
-On Linux, install the platform tools the daemon shells out to (`xclip`/`xdotool` for X11, `wl-clipboard` for Wayland); `promptune daemon diagnose` reports what's missing.
+On Linux, install the platform tools the daemon shells out to (`xclip`/`xdotool` for X11, `wl-clipboard`/`ydotool` for Wayland); `promptune daemon diagnose` reports what's missing.
 
 Daemon behavior (hotkey, clipboard settle time, notifications, Ollama pre-warm) is configured under `[daemon]` in the config file.
 
