@@ -50,7 +50,8 @@ def test_shell_script_replaces_buffer() -> None:
 def test_shell_init_cli_command() -> None:
     """'promptune shell-init' exits 0."""
     runner = CliRunner()
-    result = runner.invoke(main, ["shell-init"])
+    # Pin $SHELL so detection is deterministic across CI platforms.
+    result = runner.invoke(main, ["shell-init"], env={"SHELL": "/bin/zsh"})
     assert result.exit_code == 0
     assert "bindkey" in result.output
 
