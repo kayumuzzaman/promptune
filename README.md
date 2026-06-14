@@ -128,36 +128,40 @@ The **CLI runs in every terminal and OS** — it's a plain Python program. The c
 
 ## Installation
 
-### Quick Install (macOS)
+### Recommended — pipx (macOS + Linux)
+
+```bash
+pipx install promptune        # or: python3 -m pip install --user promptune
+promptune config init
+```
+
+Verify with `promptune --version`, then `promptune doctor`.
+
+### Optional extras
+
+```bash
+pipx install "promptune[mcp]"               # MCP server (enables `promptune mcp`)
+pipx install "promptune[mcp,linux-daemon]"  # + Linux system-daemon support
+```
+
+The Linux system-wide hotkey daemon also needs OS tools:
+
+```bash
+sudo apt install xclip xdotool        # X11
+sudo apt install wl-clipboard         # Wayland (+ add yourself to the 'input' group)
+```
+
+### One-line installer (macOS + Linux)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kayumuzzaman/promptune/main/install.sh | bash
 ```
 
-Or safer (inspect before running):
+Or inspect before running:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kayumuzzaman/promptune/main/install.sh -o install.sh
 bash install.sh
-```
-
-### Using pipx (recommended)
-
-```bash
-pipx install git+https://github.com/kayumuzzaman/promptune.git
-```
-
-### Using pip
-
-```bash
-pip install git+https://github.com/kayumuzzaman/promptune.git
-```
-
-### Optional extras
-
-```bash
-# MCP server support (enables `promptune mcp`)
-pip install "promptune[mcp] @ git+https://github.com/kayumuzzaman/promptune.git"
 ```
 
 ### For development

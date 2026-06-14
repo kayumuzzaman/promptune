@@ -42,6 +42,7 @@ def _is_interactive() -> bool:
 
 
 @click.group()
+@click.version_option(__version__, "-V", "--version", prog_name="promptune")
 def main() -> None:
     """Promptune — terminal prompt enhancer."""
 
