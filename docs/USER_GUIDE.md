@@ -187,15 +187,27 @@ To use with Claude Code, add to your MCP config:
 
 ### Auto-Enhance (AI Tool Integration)
 
-Promptune can automatically intercept low-quality prompts in AI coding tools before they're sent. When a prompt scores below the threshold (default: PQS < 40), promptune enhances it, copies the enhanced version to your clipboard, and blocks the original.
+Promptune can automatically intercept low-quality prompts in AI coding tools before they're sent. When a prompt scores below the threshold (default: PQS < 40), promptune enhances it and silently injects the enhanced version into the conversation as context — no clipboard, no manual paste.
 
-**Setup:** The `config init` wizard auto-detects installed AI tools and offers to install the hook. You can also check status with `promptune doctor`.
+**Which tools auto-trigger?** A tool can only auto-trigger if it exposes a `UserPromptSubmit` hook *and* Promptune ships an installer for it. For everything else, use the MCP server (ask the tool to enhance) or run `promptune enhance` manually first.
+
+| Tool | Auto-trigger on prompt submit? | How |
+|------|-------------------------------|-----|
+| **Claude Code** | ✅ Yes | `UserPromptSubmit` hook in `~/.claude/settings.json` |
+| **Codex CLI** | ✅ Yes | `UserPromptSubmit` hook in `~/.codex/hooks.json` |
+| **Cursor / other MCP clients** | ❌ No | Use the MCP server, or run `promptune enhance` manually and paste/pipe the result |
+
+**Setup:** The `config init` wizard auto-detects installed AI tools (Claude Code, Codex CLI, …) and offers to install the hook. You can also check status with `promptune doctor`, which prints an Auto-enhance status line per detected tool.
 
 **How it works:**
-1. You type a prompt in Claude Code (or another supported tool)
+1. You type a prompt in Claude Code, Codex CLI, or another supported tool
 2. Promptune scores the prompt against 7 quality dimensions
-3. If the score is below threshold: the prompt is enhanced, copied to clipboard, and blocked
-4. You paste the enhanced version (or retype to use the original)
+3. If the score is below threshold: the prompt is enhanced and the enhanced version is injected into the model's context via the hook's `additionalContext` output (exit 0, the prompt proceeds), so the model acts on the enhanced version automatically
+4. No clipboard, no paste — it happens silently on submit
+
+> **Note on injection vs. replacement:** the gate does **not** literally replace or overwrite the prompt text you typed — neither Claude Code nor Codex allows a hook to do that. It **injects the enhanced prompt as additional context alongside your original**, so the model receives both and acts on the enhanced version. The `!` bypass prefix still sends your prompt through raw, with no enhancement and no injection.
+
+Both supported tools use the same hook shape — a `UserPromptSubmit` entry running `promptune gate` — written to `~/.claude/settings.json` (Claude Code) or `~/.codex/hooks.json` (Codex CLI).
 
 **Configuration:**
 

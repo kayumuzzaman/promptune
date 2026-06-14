@@ -34,7 +34,7 @@
 ├─────────────┤
 │  shell.py   │  Shell widget generation — Zsh, Bash, Fish
 ├─────────────┤
-│   gate.py   │  Auto-enhance gate — score prompt, enhance if low, copy to clipboard
+│   gate.py   │  Auto-enhance gate — score prompt, enhance if low, inject as hook context
 ├─────────────┤
 │   hooks/    │  AI tool hook detection + installers (Claude Code, extensible)
 ├─────────────┤
@@ -181,7 +181,7 @@ CLI flags → environment variables → auto-downgrade → config file → defau
 
 ### Auto-Enhance Gate
 
-`gate.py` implements the auto-enhance hook pipeline. When invoked via `promptune gate` (which reads JSON from stdin), it: (1) checks if auto-enhance is enabled and prompt meets minimum word count, (2) scores the prompt using `scorer.score_prompt()`, (3) if below threshold — enhances via `engine.enhance()`, copies the enhanced prompt to clipboard (`pbcopy` on macOS, `wl-copy`/`xclip` on Linux), prints an info block to stderr, and exits 1 (block). If at or above threshold, exits 0 (allow). Gracefully degrades: invalid JSON, missing prompt key, or config errors all exit 0.
+`gate.py` implements the auto-enhance hook pipeline. When invoked via `promptune gate` (which reads JSON from stdin), it: (1) checks if auto-enhance is enabled, prompt does not start with the bypass prefix, and meets minimum word count, (2) scores the prompt using `scorer.score_prompt()`, (3) if below threshold — enhances via `engine.enhance()` and silently injects the enhanced prompt by writing a `UserPromptSubmit` `hookSpecificOutput` JSON (`additionalContext`) to stdout, then prints a one-line transparency note to stderr. The gate always exits 0, so the original prompt proceeds and the model sees the enhanced version as added context (the hook cannot replace the typed prompt). This shared stdout contract works for both Claude Code and Codex `UserPromptSubmit` hooks. Gracefully degrades: invalid JSON, missing prompt key, or config errors all exit 0 with no stdout output.
 
 ### Hook Installers
 

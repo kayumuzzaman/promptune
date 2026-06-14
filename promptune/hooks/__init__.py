@@ -31,8 +31,9 @@ class HookInstaller(Protocol):
 def get_installers() -> list[HookInstaller]:
     """Return all known hook installers."""
     from promptune.hooks.claude_code import ClaudeCodeInstaller
+    from promptune.hooks.codex import CodexInstaller
 
-    return [ClaudeCodeInstaller()]
+    return [ClaudeCodeInstaller(), CodexInstaller()]
 
 
 def detect_tools() -> list[HookInstaller]:
