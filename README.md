@@ -189,6 +189,10 @@ Now press **Ctrl+E** in your terminal to enhance the current line.
 
 > `promptune config init` also detects installed AI coding tools (Claude Code, Codex CLI, …) and offers to install the [auto-enhance hook](#auto-enhance-in-ai-coding-tools) and register the [MCP server](#mcp-server-setup) for you. Both are optional.
 
+_The setup wizard:_
+
+![promptune config init walkthrough](docs/assets/option-settings.gif)
+
 ## CLI Commands
 
 Run `promptune --help` for the full list, or `promptune <command> --help` for any command.
@@ -196,6 +200,10 @@ Run `promptune --help` for the full list, or `promptune <command> --help` for an
 ### `promptune enhance`
 
 Enhance a prompt using AI. Opens a TUI with Accept/Edit/Reject workflow by default.
+
+_With `--no-tui`, the enhanced prompt prints straight to stdout — pipe it anywhere:_
+
+![promptune enhance --no-tui in a shell](docs/assets/option-a.gif)
 
 ```bash
 # Basic — opens TUI with before/after comparison
@@ -338,6 +346,10 @@ promptune version
 
 Promptune ships an [MCP](https://modelcontextprotocol.io) server (`promptune mcp`, stdio transport) that exposes two tools to any MCP-compatible AI tool:
 
+_Claude Code calling the `enhance` tool, then acting on the refined prompt:_
+
+![promptune MCP tool inside Claude Code](docs/assets/option-b.gif)
+
 | Tool | Arguments | Returns |
 |------|-----------|---------|
 | `enhance_prompt` | `prompt` (str), `style` = `balanced`, `tier` = `-1` (auto), `output_format` = `auto` | Enhanced prompt, tier used, before/after scores |
@@ -396,6 +408,10 @@ Once registered, ask your AI assistant naturally — e.g. *"score this prompt"* 
 ## Auto-Enhance in AI Coding Tools
 
 The auto-enhance hook intercepts prompts you submit in an AI coding tool, and when a prompt looks weak it enhances it and silently injects the improved version into the conversation as context — no clipboard, no manual paste.
+
+_A weak prompt silently enhanced and injected inside Codex (`!` bypasses):_
+
+![promptune auto-enhance gate inside Codex](docs/assets/option-c.gif)
 
 ### Which tools auto-trigger?
 
