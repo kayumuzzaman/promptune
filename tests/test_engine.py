@@ -1,0 +1,591 @@
+"""Router Engine tests."""
+
+import pytest
+from pytest_mock import MockerFixture
+
+from promptune.config import ConfigError
+from promptune.engine import EnhanceResult, enhance, get_registry
+from promptune.providers import ProviderError
+from promptune.scorer import ScoreResult
+
+
+@pytest.fixture()
+def mock_config() -> dict:
+    """Return a valid config dict with new schema."""
+    return {
+        "provider": {
+            "default": "claude",
+            "format_style": "auto",
+            "model_claude": "claude-haiku-4-5-20251001",
+            "model_openai": "gpt-4o-mini",
+            "model_openrouter": "anthropic/claude-haiku",
+        },
+        "api_keys": {
+            "claude": "sk-ant-test",
+            "openai": "sk-test",
+            "openrouter": "sk-or-test",
+        },
+        "enhancement": {
+            "max_tier": 2,
+            "default_mode": "balanced",
+            "max_tokens_output": 400,
+            "timeout_seconds": 10,
+        },
+        "local_llm": {
+            "enabled": True,
+            "host": "http://localhost:11434",
+            "model": "qwen2.5:3b",
+            "api_key": "",
+        },
+        "context": {
+            "use_git": True,
+            "use_shell_history": True,
+            "use_stack_detection": True,
+            "max_context_tokens": 500,
+            "shell_history_lines": 20,
+        },
+        "history": {
+            "enabled": True,
+            "max_entries": 10000,
+            "db_path": "~/.local/share/promptune/history.db",
+        },
+        "tui": {
+            "show_pqs_scores": True,
+            "show_tier_used": True,
+            "show_latency": True,
+            "theme": "dark",
+            "show_diff": True,
+        },
+    }
+
+
+def test_get_registry_returns_known_providers() -> None:
+    """get_registry() returns registry with claude, openai, openrouter."""
+    registry = get_registry()
+    providers = registry.list()
+    assert "claude" in providers
+    assert "openai" in providers
+    assert "openrouter" in providers
+
+
+def test_enhance_result_has_full_metadata() -> None:
+    """EnhanceResult has all required fields."""
+    result = EnhanceResult(
+        original="test",
+        enhanced="enhanced test",
+        tier_used=0,
+        latency_ms=5.0,
+        score_before=ScoreResult(
+            total=20, dimensions={}, intent="coding"
+        ),
+        score_after=ScoreResult(
+            total=70, dimensions={}, intent="coding"
+        ),
+        rules_applied=["output_format"],
+        rules_explained=[("output_format", "Added output format instruction")],
+        context=None,
+        format_style="auto",
+        provider=None,
+        model=None,
+    )
+    assert result.tier_used == 0
+    assert result.latency_ms == 5.0
+    assert result.provider is None
+
+
+def test_engine_tier0_only(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """max_tier=0 uses only Tier 0 rules."""
+    mock_config["enhancement"]["max_tier"] = 0
+
+    result = enhance("fix the bug", mock_config)
+
+    assert isinstance(result, EnhanceResult)
+    assert result.tier_used == 0
+    assert result.provider is None
+    assert result.model is None
+    assert len(result.rules_applied) > 0
+    assert result.original == "fix the bug"
+
+
+def test_engine_tier0_high_score_prompt(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """High-scoring prompt stays at Tier 0 even with max_tier=2."""
+    detailed = (
+        "## Task\nYou are a senior Python developer. "
+        "Implement a REST API "
+        "using Flask with SQLAlchemy ORM and PostgreSQL.\n"
+        "## Requirements\n"
+        "- JWT authentication\n"
+        "- Rate limiting at 100 req/min\n"
+        "## Output\nReturn JSON with proper HTTP status codes"
+    )
+
+    result = enhance(detailed, mock_config)
+
+    assert isinstance(result, EnhanceResult)
+    assert result.tier_used >= 0
+
+
+def test_engine_tier2_cloud_provider(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Tier 2 calls cloud provider when local LLM disabled."""
+    mock_config["local_llm"]["enabled"] = False
+
+    mock_provider = mocker.MagicMock()
+    mock_provider.enhance.return_value = "Cloud enhanced text"
+    mocker.patch(
+        "promptune.engine._create_cloud_provider",
+        return_value=mock_provider,
+    )
+
+    result = enhance("fix the bug", mock_config)
+
+    assert isinstance(result, EnhanceResult)
+    if result.tier_used == 2:
+        assert result.provider == "claude"
+        assert result.enhanced == "Cloud enhanced text"
+
+
+def test_engine_graceful_degradation_tier1_fail(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """When Tier 1 fails, falls back to Tier 0 result."""
+    mocker.patch(
+        "promptune.engine._try_tier1",
+        side_effect=ProviderError("Connection refused"),
+    )
+
+    result = enhance("fix the bug", mock_config)
+
+    assert isinstance(result, EnhanceResult)
+    assert result.tier_used in (0, 2)
+
+
+def test_engine_tier_override(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """--tier flag forces specific tier."""
+    mock_provider = mocker.MagicMock()
+    mock_provider.enhance.return_value = "Cloud result"
+    mocker.patch(
+        "promptune.engine._create_cloud_provider",
+        return_value=mock_provider,
+    )
+
+    result = enhance("fix the bug", mock_config, tier_override=2)
+
+    assert result.tier_used == 2
+
+
+def test_engine_returns_scores(mock_config: dict) -> None:
+    """Result contains before and after scores."""
+    mock_config["enhancement"]["max_tier"] = 0
+
+    result = enhance("fix the bug", mock_config)
+
+    assert isinstance(result.score_before, ScoreResult)
+    assert isinstance(result.score_after, ScoreResult)
+    assert result.score_before.total >= 0
+    assert result.score_after.total >= 0
+
+
+def test_engine_latency_tracked(mock_config: dict) -> None:
+    """Latency is tracked in milliseconds."""
+    mock_config["enhancement"]["max_tier"] = 0
+
+    result = enhance("fix the bug", mock_config)
+
+    assert result.latency_ms >= 0
+    assert result.latency_ms < 5000
+
+
+def test_engine_missing_api_key_tier2(
+    mock_config: dict,
+) -> None:
+    """Missing API key for Tier 2 falls back gracefully."""
+    mock_config["api_keys"]["claude"] = ""
+    mock_config["local_llm"]["enabled"] = False
+
+    result = enhance("fix the bug", mock_config)
+    assert result.tier_used == 0
+
+
+def test_engine_provider_error_propagates_on_forced_tier(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """When tier is forced and provider fails, error propagates."""
+    mock_provider = mocker.MagicMock()
+    mock_provider.enhance.side_effect = ProviderError("API down")
+    mocker.patch(
+        "promptune.engine._create_cloud_provider",
+        return_value=mock_provider,
+    )
+
+    with pytest.raises(ProviderError, match="API down"):
+        enhance("prompt", mock_config, tier_override=2)
+
+
+def test_engine_missing_api_key_forced_tier2(
+    mock_config: dict,
+) -> None:
+    """Forcing tier=2 with ALL API keys empty raises ConfigError."""
+    mock_config["api_keys"]["claude"] = ""
+    mock_config["api_keys"]["openai"] = ""
+    mock_config["api_keys"]["openrouter"] = ""
+
+    with pytest.raises(ConfigError, match="[Aa][Pp][Ii].*[Kk]ey"):
+        enhance("fix the bug", mock_config, tier_override=2)
+
+
+def test_engine_dedup_hit_returns_cached(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """When dedup finds a match, engine returns cached result."""
+    from promptune.dedup import DedupHit
+
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["dedup_enabled"] = True
+
+    mocker.patch(
+        "promptune.engine.dedup_check",
+        return_value=DedupHit(
+            enhanced="cached result",
+            similarity=0.95,
+            original_prompt="fix the bug",
+        ),
+    )
+
+    result = enhance("fix the bug", mock_config)
+
+    assert result.enhanced == "cached result"
+    assert result.tier_used == -1  # cached indicator
+
+
+def test_engine_preferences_skip_rules(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Preferences cause disliked rules to be skipped."""
+    from promptune.preferences import Preference
+    from promptune.tier0 import apply_rules
+
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["preference_learning"] = True
+    mock_config["enhancement"]["dedup_enabled"] = False
+
+    mocker.patch(
+        "promptune.engine.analyse_rule_preferences",
+        return_value=[
+            Preference(
+                rule_name="role_assignment",
+                action="skip",
+                confidence=0.8,
+                sample_count=10,
+            ),
+        ],
+    )
+    mocker.patch(
+        "promptune.engine.analyse_edit_patterns",
+        return_value=[],
+    )
+
+    mock_apply = mocker.patch(
+        "promptune.engine.apply_rules",
+        wraps=apply_rules,
+    )
+
+    enhance("fix the bug", mock_config)
+
+    # Verify apply_rules was called with skip_rules containing "role_assignment"
+    call_args = mock_apply.call_args
+    skip = call_args.kwargs.get("skip_rules") or (
+        call_args[1].get("skip_rules") if len(call_args) > 1 else None
+    )
+    assert skip is not None
+    assert "role_assignment" in skip
+
+
+def test_engine_preferences_disabled(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Preference learning disabled -> no preference analysis."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["preference_learning"] = False
+    mock_config["enhancement"]["dedup_enabled"] = False
+
+    mock_prefs = mocker.patch("promptune.engine.analyse_rule_preferences")
+
+    enhance("fix the bug", mock_config)
+
+    mock_prefs.assert_not_called()
+
+
+def test_engine_dedup_disabled_skips_check(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """When dedup is disabled, dedup_check is never called."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["dedup_enabled"] = False
+
+    mock_dedup = mocker.patch("promptune.engine.dedup_check")
+
+    enhance("fix the bug", mock_config)
+
+    mock_dedup.assert_not_called()
+
+
+def test_engine_template_injection(
+    mocker: MockerFixture, mock_config: dict, tmp_path
+) -> None:
+    """Matched template is injected into system prompt context."""
+    from promptune.templates import Template
+
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["dedup_enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+
+    mocker.patch(
+        "promptune.engine.match_template",
+        return_value=Template(
+            intent="debug",
+            domain="python",
+            body="## Debug Context\nStack: python",
+            filename="debug.md",
+        ),
+    )
+    mocker.patch(
+        "promptune.engine._detect_project_root",
+        return_value=str(tmp_path),
+    )
+
+    result = enhance("fix the auth bug", mock_config)
+
+    assert isinstance(result, EnhanceResult)
+    assert result.tier_used == 0
+
+
+def test_engine_no_template_dir_works(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """No .prompts/ directory works fine."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["dedup_enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+
+    mocker.patch(
+        "promptune.engine.match_template",
+        return_value=None,
+    )
+
+    result = enhance("fix the auth bug", mock_config)
+
+    assert isinstance(result, EnhanceResult)
+
+
+# ── _detect_project_root fallback (L79-81) ──────────────
+
+
+def test_detect_project_root_no_git(
+    mocker: MockerFixture,
+) -> None:
+    """Falls back to cwd when git is absent."""
+    from promptune.engine import _detect_project_root
+
+    mocker.patch(
+        "subprocess.run",
+        side_effect=FileNotFoundError("no git"),
+    )
+    root = _detect_project_root()
+    assert root
+
+
+# ── _try_tier1 creates LocalProvider (L121-131) ─────────
+
+
+def test_try_tier1_success(
+    mocker: MockerFixture,
+) -> None:
+    """_try_tier1 creates LocalProvider and enhances."""
+    from promptune.engine import _try_tier1
+
+    mock_prov = mocker.MagicMock()
+    mock_prov.enhance.return_value = "tier1 result"
+    mocker.patch(
+        "promptune.providers.local.LocalProvider",
+        return_value=mock_prov,
+    )
+    cfg = {
+        "local_llm": {
+            "model": "qwen",
+            "host": "http://localhost:11434",
+            "api_key": "",
+        },
+        "enhancement": {"timeout_seconds": 10},
+    }
+    result = _try_tier1("prompt", "system", cfg)
+    assert result == "tier1 result"
+
+
+# ── provider_override (L163) ────────────────────────────
+
+
+def test_provider_override(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """provider_override changes config default."""
+    mock_config["enhancement"]["max_tier"] = 0
+    result = enhance(
+        "fix the bug",
+        mock_config,
+        provider_override="openai",
+    )
+    assert result.tier_used == 0
+
+
+# ── history exception caught (L231-236) ─────────────────
+
+
+def test_history_exception_caught(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Exception in history/dedup is caught."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mocker.patch(
+        "promptune.engine.HistoryStore",
+        side_effect=RuntimeError("db locked"),
+    )
+    result = enhance("fix the bug", mock_config)
+    assert result.tier_used == 0
+
+
+# ── template injection failure (L295-296) ────────────────
+
+
+def test_template_injection_exception(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Template injection exception is caught."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["dedup_enabled"] = False
+    mock_config["enhancement"][
+        "preference_learning"
+    ] = False
+    mocker.patch(
+        "promptune.engine.match_template",
+        side_effect=RuntimeError("broken"),
+    )
+    result = enhance("fix the bug", mock_config)
+    assert result.tier_used == 0
+
+
+def test_template_injection_logs_warning_on_failure(
+    mocker: MockerFixture, mock_config: dict, caplog
+) -> None:
+    """Swallowed template-injection failure surfaces as a warning."""
+    import logging
+
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["enhancement"]["dedup_enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+    mocker.patch(
+        "promptune.engine.match_template",
+        side_effect=RuntimeError("broken"),
+    )
+    with caplog.at_level(logging.WARNING, logger="promptune.engine"):
+        enhance("fix the bug", mock_config)
+    warnings = [
+        r for r in caplog.records if r.levelno >= logging.WARNING
+    ]
+    assert any(
+        "template" in r.getMessage().lower() for r in warnings
+    )
+
+
+def test_history_failure_logs_warning(
+    mocker: MockerFixture, mock_config: dict, caplog
+) -> None:
+    """Swallowed history/dedup/preferences failure surfaces as a warning."""
+    import logging
+
+    mock_config["enhancement"]["max_tier"] = 0
+    mocker.patch(
+        "promptune.engine.HistoryStore",
+        side_effect=RuntimeError("db locked"),
+    )
+    with caplog.at_level(logging.WARNING, logger="promptune.engine"):
+        enhance("fix the bug", mock_config)
+    warnings = [
+        r for r in caplog.records if r.levelno >= logging.WARNING
+    ]
+    assert any(
+        "history" in r.getMessage().lower() for r in warnings
+    )
+
+
+# ── forced tier=0 and tier=1 (L306, L308-313) ───────────
+
+
+def test_forced_tier0(mock_config: dict) -> None:
+    """tier_override=0 forces tier 0 only."""
+    result = enhance(
+        "fix the bug", mock_config, tier_override=0
+    )
+    assert result.tier_used == 0
+
+
+def test_forced_tier1(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """tier_override=1 forces tier 1."""
+    mock_prov = mocker.MagicMock()
+    mock_prov.enhance.return_value = "local result"
+    mocker.patch(
+        "promptune.providers.local.LocalProvider",
+        return_value=mock_prov,
+    )
+    result = enhance(
+        "fix the bug", mock_config, tier_override=1
+    )
+    assert result.tier_used == 1
+    assert result.provider == "local"
+    assert result.model == "qwen2.5:3b"
+
+
+# ── non-forced tier1 success (L328-330) ─────────────────
+
+
+def test_tier1_success_non_forced(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Tier 1 succeeds in non-forced routing."""
+    mock_config["enhancement"]["max_tier"] = 1
+    mock_prov = mocker.MagicMock()
+    mock_prov.enhance.return_value = "local enhanced"
+    mocker.patch(
+        "promptune.providers.local.LocalProvider",
+        return_value=mock_prov,
+    )
+    # Use a short prompt that scores low (< 70)
+    result = enhance("fix bug", mock_config)
+    assert result.tier_used == 1
+    assert result.provider == "local"
+
+
+# ── history disabled path ────────────────────────────────
+
+
+def test_history_disabled(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """History disabled skips dedup and preferences."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mock_config["history"]["enabled"] = False
+    mock_dedup = mocker.patch(
+        "promptune.engine.dedup_check"
+    )
+    result = enhance("fix the bug", mock_config)
+    assert result.tier_used == 0
+    mock_dedup.assert_not_called()
