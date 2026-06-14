@@ -72,6 +72,30 @@ markers = [
     "linux: integration tests that require a real Linux environment with X11/Wayland and system tools (xclip, xdotool, wl-clipboard, ydotool, dbus, evdev). Skip on macOS with: pytest -m 'not linux'",
 ]
 
+[tool.coverage.run]
+branch = false
+# macOS-only daemon modules: import-guarded to darwin and exercised only by
+# macOS-gated tests, so they cannot be measured on the Linux CI runner. They
+# are verified on macOS (tests still run) and via docs/MANUAL_TESTING.md.
+# Omitting them keeps the coverage gate meaningful and platform-independent.
+omit = [
+    "promptune/daemon/clipboard.py",
+    "promptune/daemon/hotkey.py",
+    "promptune/daemon/notify.py",
+    "promptune/daemon/ipc.py",
+    "promptune/daemon/prewarm.py",
+    "promptune/daemon/launchagent.py",
+    "promptune/daemon/platform/macos.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if sys.platform",
+    "raise ImportError",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+]
+
 [tool.ruff]
 target-version = "py39"
 line-length = 88

@@ -39,4 +39,6 @@ jobs:
         run: mypy promptune/
 
       - name: Tests with coverage
-        run: pytest --cov=promptune --cov-report=term-missing --cov-fail-under=89
+        # Linux CI: macOS-only daemon tests self-skip; -m "not linux" excludes
+        # real-hardware X11/Wayland integration tests (see pyproject markers).
+        run: pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-fail-under=89

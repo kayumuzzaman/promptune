@@ -9,13 +9,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin", reason="macOS-only"
-)
+if sys.platform != "darwin":
+    pytest.skip("macOS-only", allow_module_level=True)
 
 # ---------------------------------------------------------------------------
 # We patch at the module level so that imports inside clipboard.py resolve to
-# our mocks before any real system calls are attempted.
+# our mocks before any real system calls are attempted. The skip above aborts
+# collection on non-macOS *before* this import runs (skipif would not).
 # ---------------------------------------------------------------------------
 
 from promptune.daemon import clipboard  # noqa: E402  (import after skip guard)
