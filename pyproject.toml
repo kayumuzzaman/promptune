@@ -57,6 +57,9 @@ linux-daemon = [
 mcp = [
     "mcp>=1.0",
 ]
+docs = [
+    "pillow>=10",
+]
 
 [project.scripts]
 promptune = "promptune.cli:main"

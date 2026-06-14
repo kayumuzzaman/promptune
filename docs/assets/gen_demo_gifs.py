@@ -3,7 +3,10 @@
 
 Renders authentic-style Claude Code and Codex TUI chrome (input composer box,
 tool-call rendering, status footer) plus plain-shell scenes. Zero runtime deps
-beyond Pillow. Run: python3 gen_demo_gifs.py
+beyond Pillow.
+
+Setup: pip install -e ".[docs]"   (or: pip install pillow)
+Run:   python3 gen_demo_gifs.py
 
 Outputs: option-a.gif (shell), option-b.gif (Claude Code MCP),
 option-c.gif (Codex gate), option-settings.gif (config wizard).
@@ -35,7 +38,6 @@ YELLOW = (255, 189, 46)
 CURSOR = (230, 237, 243)
 BORDER = (74, 84, 96)
 
-FONT_PATH = "/System/Library/Fonts/Menlo.ttc"
 FSIZE = 18
 LINE_H = 27
 PAD_X = 24
@@ -43,8 +45,27 @@ CHROME_H = 40
 PAD_TOP = CHROME_H + 14
 BOT_PAD = 16
 
-font = ImageFont.truetype(FONT_PATH, FSIZE)
-title_font = ImageFont.truetype(FONT_PATH, 13)
+# Probe common monospace fonts so the generator runs on macOS and Linux.
+_FONT_CANDIDATES = [
+    "/System/Library/Fonts/Menlo.ttc",                                  # macOS
+    "/System/Library/Fonts/SFNSMono.ttf",                               # macOS
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",              # Debian/Ubuntu
+    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",                          # Arch
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",  # RHEL/Fedora
+]
+
+
+def _load_font(size: int) -> ImageFont.FreeTypeFont:
+    for path in _FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size)
+
+
+font = _load_font(FSIZE)
+title_font = _load_font(13)
 CHAR_W = font.getlength("M")
 
 
@@ -304,7 +325,10 @@ build(
         ("qa", "  Claude model [claude-haiku-4-5]: ", "", WHITE),
         ("line", 0, "", WHITE),
         ("qa", "  Configure advanced settings? [y/N]: ", "y", WHITE),
+        ("qa", "  Enhancement style [minimal/balanced/detailed]: ", "balanced", WHITE),
         ("qa", "  Max tier (0=rules,1=+local,2=+cloud) [0/1/2]: ", "2", WHITE),
+        ("qa", "  Format style [auto/xml/markdown/plain]: ", "auto", WHITE),
+        ("qa", "  Enable local LLM (e.g. Ollama)? [Y/n]: ", "n", WHITE),
         ("line", 0, "", WHITE),
         ("line", 0, "  Found: Claude Code, Codex", DIM),
         ("qa", "  Auto-enhance prompts in these tools? [Y/n]: ", "y", WHITE),
