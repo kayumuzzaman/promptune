@@ -1,0 +1,72 @@
+"""OpenRouter provider using httpx."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+
+from promptune.providers import BaseProvider, ProviderError, ProviderRegistry
+
+
+class OpenRouterProvider(BaseProvider):
+    """AI provider using the OpenRouter API via httpx."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str = "https://openrouter.ai/api/v1",
+        timeout: float = 30.0,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(api_key=api_key, model=model, **kwargs)
+        self.base_url = base_url
+        self._headers = {
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "https://github.com/promptune",
+            "Content-Type": "application/json",
+        }
+        self._timeout = timeout
+
+    def enhance(self, prompt: str, system_prompt: str) -> str:
+        """Send prompt to OpenRouter and return enhanced version."""
+        try:
+            with httpx.Client(
+                headers=self._headers, timeout=self._timeout
+            ) as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt},
+                        ],
+                    },
+                )
+                response.raise_for_status()
+        except ProviderError:
+            raise
+        except Exception as e:
+            raise ProviderError(str(e)) from e
+
+        data = response.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise ProviderError(
+                "Empty response from OpenRouter API"
+            )
+
+        content = choices[0].get("message", {}).get("content", "")
+        if not content:
+            raise ProviderError(
+                "Empty response from OpenRouter API"
+            )
+
+        return str(content)
+
+
+def register(registry: ProviderRegistry) -> None:
+    """Register the OpenRouter provider."""
+    registry.register("openrouter", OpenRouterProvider)

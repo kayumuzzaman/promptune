@@ -95,7 +95,7 @@
 | `promptune/setup.py` | 139 | 5 | 96% | ✅ | +auto_enhance wizard step |
 | `promptune/shell.py` | 78 | 0 | 100% | ✅ | |
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
-| `promptune/tier0.py` | 145 | 6 | 96% | ✅ | |
+| `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
 | **TOTAL** | **3524** | **239** | **93%** | ✅ | Target: ≥ 90% |
 

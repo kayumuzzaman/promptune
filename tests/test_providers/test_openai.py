@@ -1,0 +1,103 @@
+"""Step 4: OpenAI Provider — tests."""
+
+import pytest
+from pytest_mock import MockerFixture
+
+from promptune.providers import BaseProvider, ProviderError, ProviderRegistry
+from promptune.providers.openai import OpenAIProvider
+
+
+def test_openai_provider_implements_base() -> None:
+    """OpenAIProvider is a subclass of BaseProvider."""
+    assert issubclass(OpenAIProvider, BaseProvider)
+
+
+def test_openai_enhance_returns_string(mocker: MockerFixture) -> None:
+    """Mock API returns enhanced text."""
+    mock_client = mocker.MagicMock()
+    mock_choice = mocker.MagicMock()
+    mock_choice.message.content = "Enhanced prompt here"
+    mock_client.chat.completions.create.return_value = mocker.MagicMock(
+        choices=[mock_choice]
+    )
+    mocker.patch(
+        "promptune.providers.openai.openai_sdk.OpenAI",
+        return_value=mock_client,
+    )
+
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4o")
+    result = provider.enhance("rough prompt", "system instructions")
+
+    assert isinstance(result, str)
+    assert result == "Enhanced prompt here"
+
+
+def test_openai_enhance_sends_correct_params(
+    mocker: MockerFixture,
+) -> None:
+    """Verify model, messages sent correctly."""
+    mock_client = mocker.MagicMock()
+    mock_choice = mocker.MagicMock()
+    mock_choice.message.content = "result"
+    mock_client.chat.completions.create.return_value = mocker.MagicMock(
+        choices=[mock_choice]
+    )
+    mocker.patch(
+        "promptune.providers.openai.openai_sdk.OpenAI",
+        return_value=mock_client,
+    )
+
+    provider = OpenAIProvider(api_key="test-key", model="my-model")
+    provider.enhance("my prompt", "my system")
+
+    mock_client.chat.completions.create.assert_called_once_with(
+        model="my-model",
+        messages=[
+            {"role": "system", "content": "my system"},
+            {"role": "user", "content": "my prompt"},
+        ],
+    )
+
+
+def test_openai_api_error_handling(mocker: MockerFixture) -> None:
+    """API error raises ProviderError."""
+    mock_client = mocker.MagicMock()
+    mock_client.chat.completions.create.side_effect = Exception(
+        "API failed"
+    )
+    mocker.patch(
+        "promptune.providers.openai.openai_sdk.OpenAI",
+        return_value=mock_client,
+    )
+
+    provider = OpenAIProvider(api_key="test-key", model="m")
+    with pytest.raises(ProviderError, match="API failed"):
+        provider.enhance("prompt", "system")
+
+
+def test_openai_empty_response_handling(
+    mocker: MockerFixture,
+) -> None:
+    """Empty response raises ProviderError."""
+    mock_client = mocker.MagicMock()
+    mock_client.chat.completions.create.return_value = mocker.MagicMock(
+        choices=[]
+    )
+    mocker.patch(
+        "promptune.providers.openai.openai_sdk.OpenAI",
+        return_value=mock_client,
+    )
+
+    provider = OpenAIProvider(api_key="test-key", model="m")
+    with pytest.raises(ProviderError, match="[Ee]mpty"):
+        provider.enhance("prompt", "system")
+
+
+def test_openai_registered_in_registry() -> None:
+    """'openai' name in provider registry."""
+    from promptune.providers.openai import register
+
+    registry = ProviderRegistry()
+    register(registry)
+    assert "openai" in registry.list()
+    assert registry.get("openai") is OpenAIProvider

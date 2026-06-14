@@ -1,0 +1,97 @@
+"""Step 6: Meta-Prompt Engine — tests."""
+
+from promptune.meta_prompt import (
+    build_system_prompt,
+    detect_domain,
+    detect_intent,
+    detect_stack,
+)
+
+
+def test_detect_intent_coding() -> None:
+    """'build a REST API' -> coding intent."""
+    assert detect_intent("build a REST API with Flask") == "coding"
+
+
+def test_detect_intent_writing() -> None:
+    """'write a blog post' -> writing intent."""
+    assert detect_intent("write a blog post about AI") == "writing"
+
+
+def test_detect_intent_research() -> None:
+    """'explain how DNS works' -> research intent."""
+    assert detect_intent("explain how DNS works") == "research"
+
+
+def test_detect_domain_webdev() -> None:
+    """'React component' -> web dev domain."""
+    assert detect_domain("create a React component for login") == "webdev"
+
+
+def test_detect_domain_datascience() -> None:
+    """'train a model' -> data science domain."""
+    assert detect_domain("train a model on this dataset") == "datascience"
+
+
+def test_detect_stack_python() -> None:
+    """'using Flask' -> Python stack detected."""
+    stack = detect_stack("build an API using Flask and SQLAlchemy")
+    assert "python" in stack
+    assert "flask" in stack
+
+
+def test_build_system_prompt_minimal() -> None:
+    """Minimal style produces conservative prompt."""
+    prompt = build_system_prompt(
+        intent="coding",
+        domain="webdev",
+        stack=["python", "flask"],
+        style="minimal",
+    )
+    assert "clarity" in prompt.lower() or "grammar" in prompt.lower()
+    assert "preserve" in prompt.lower()
+
+
+def test_build_system_prompt_balanced() -> None:
+    """Balanced style adds structure."""
+    prompt = build_system_prompt(
+        intent="coding",
+        domain="webdev",
+        stack=["python", "flask"],
+        style="balanced",
+    )
+    assert "structure" in prompt.lower()
+
+
+def test_build_system_prompt_detailed() -> None:
+    """Detailed style adds edge cases."""
+    prompt = build_system_prompt(
+        intent="coding",
+        domain="webdev",
+        stack=["python", "flask"],
+        style="detailed",
+    )
+    assert "edge case" in prompt.lower() or "criteria" in prompt.lower()
+
+
+def test_system_prompt_includes_context() -> None:
+    """Detected intent/domain/stack in output."""
+    prompt = build_system_prompt(
+        intent="coding",
+        domain="webdev",
+        stack=["typescript", "react"],
+        style="balanced",
+    )
+    assert "coding" in prompt.lower()
+    assert "webdev" in prompt.lower() or "web" in prompt.lower()
+
+
+def test_preserves_user_intent() -> None:
+    """Enhanced prompt instructions don't contradict original."""
+    prompt = build_system_prompt(
+        intent="writing",
+        domain="general",
+        stack=[],
+        style="balanced",
+    )
+    assert "preserve" in prompt.lower() or "intent" in prompt.lower()

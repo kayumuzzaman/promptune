@@ -1,0 +1,52 @@
+"""Claude provider using the Anthropic SDK."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import anthropic
+from anthropic.types import TextBlock
+
+from promptune.providers import BaseProvider, ProviderError, ProviderRegistry
+
+
+class ClaudeProvider(BaseProvider):
+    """AI provider using the Anthropic Claude API."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        timeout: float = 30.0,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(api_key=api_key, model=model, **kwargs)
+        self._client = anthropic.Anthropic(
+            api_key=api_key,
+            timeout=timeout,
+        )
+
+    def enhance(self, prompt: str, system_prompt: str) -> str:
+        """Send prompt to Claude and return enhanced version."""
+        try:
+            response = self._client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as e:
+            raise ProviderError(str(e)) from e
+
+        if not response.content:
+            raise ProviderError("Empty response from Claude API")
+
+        block = response.content[0]
+        if not isinstance(block, TextBlock):
+            raise ProviderError("Empty response from Claude API")
+        return block.text
+
+
+def register(registry: ProviderRegistry) -> None:
+    """Register the Claude provider."""
+    registry.register("claude", ClaudeProvider)

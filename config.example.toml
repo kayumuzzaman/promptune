@@ -1,0 +1,65 @@
+# Promptune Configuration
+# Copy to ~/.config/promptune/config.toml and fill in your API keys.
+
+[provider]
+default = "claude"                        # claude | openai | openrouter
+format_style = "auto"                     # auto | xml | markdown | plain
+model_claude = "claude-haiku-4-5-20251001"
+model_openai = "gpt-4o-mini"
+model_openrouter = "anthropic/claude-haiku"
+
+[api_keys]
+claude = ""
+openai = ""
+openrouter = ""
+
+[enhancement]
+max_tier = 2                              # 0=rules only, 1=+local, 2=+cloud
+default_mode = "balanced"                 # minimal | balanced | detailed
+max_tokens_output = 400
+timeout_seconds = 10
+dedup_enabled = true                      # skip near-duplicate prompts
+dedup_threshold = 0.85                    # cosine similarity threshold (0.0–1.0)
+dedup_window = 50                         # number of recent history entries to check
+preference_learning = true                # learn from accept/reject/edit actions
+preference_min_samples = 5               # min samples before applying learned rules
+
+[local_llm]
+enabled = true
+host = "http://localhost:11434"
+model = "qwen2.5:3b"
+api_key = ""
+
+[context]
+use_git = true
+use_shell_history = true
+use_stack_detection = true
+max_context_tokens = 500
+shell_history_lines = 20
+
+[history]
+enabled = true
+max_entries = 10000
+db_path = "~/.local/share/promptune/history.db"
+
+[tui]
+show_pqs_scores = true
+show_tier_used = true
+show_latency = true
+theme = "dark"
+show_diff = true
+
+[daemon]
+hotkey = "ctrl+shift+e"              # Global hotkey (modifier+key format)
+clipboard_settle_ms = 100            # Wait after Cmd+C before reading clipboard
+notify = true                        # Show macOS notifications
+notify_sound = true                  # Play sound with notifications
+ollama_prewarm = true                # Pre-load Ollama model on daemon start
+ollama_keepalive_minutes = 30        # Ollama keep_alive duration
+log_level = "info"                   # debug | info | warning | error
+
+[auto_enhance]
+enabled = true                       # Auto-enhance low-quality prompts in AI tools
+threshold = 40                       # PQS score below which auto-enhance triggers (0-100)
+min_words = 5                        # Skip prompts shorter than this (commands, not prompts)
+bypass_prefix = "!"                  # Prefix to skip auto-enhance (e.g. "! my prompt")

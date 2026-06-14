@@ -1,0 +1,135 @@
+"""Team .prompts/ templates — load, match, inject."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class Template:
+    """A parsed prompt template."""
+
+    intent: str | None
+    domain: str | None
+    body: str
+    filename: str
+
+    @property
+    def specificity(self) -> int:
+        """How specific is the match condition? Higher is better."""
+        count = 0
+        if self.intent:
+            count += 1
+        if self.domain:
+            count += 1
+        return count
+
+
+def parse_template(content: str, filename: str) -> Template | None:
+    """Parse a template file with YAML-like frontmatter.
+
+    Returns None if frontmatter is missing, empty, or invalid.
+    Uses simple regex parsing to avoid a PyYAML dependency.
+    """
+    match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n(.*)",
+        content,
+        re.DOTALL,
+    )
+    if not match:
+        return None
+
+    frontmatter_text = match.group(1).strip()
+    body = match.group(2).strip()
+
+    if not frontmatter_text:
+        return None
+
+    fields: dict[str, str] = {}
+    try:
+        for line in frontmatter_text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(":", 1)
+            if len(parts) != 2:
+                return None
+            key = parts[0].strip()
+            value = parts[1].strip()
+            fields[key] = value
+    except Exception:
+        return None
+
+    intent = fields.get("intent") or None
+    domain = fields.get("domain") or None
+
+    if not intent and not domain:
+        return None
+
+    return Template(
+        intent=intent,
+        domain=domain,
+        body=body,
+        filename=filename,
+    )
+
+
+def load_templates(project_root: Path | str) -> list[Template]:
+    """Load all valid templates from .prompts/ directory."""
+    prompts_dir = Path(project_root) / ".prompts"
+    if not prompts_dir.is_dir():
+        return []
+
+    templates: list[Template] = []
+    for path in sorted(prompts_dir.glob("*.md")):
+        try:
+            content = path.read_text()
+            tpl = parse_template(content, path.name)
+            if tpl is not None:
+                templates.append(tpl)
+        except Exception:
+            continue
+
+    return templates
+
+
+def match_template(
+    project_root: Path | str,
+    intent: str,
+    domain: str,
+) -> Template | None:
+    """Find the best matching template for the given intent/domain."""
+    templates = load_templates(project_root)
+    if not templates:
+        return None
+
+    candidates: list[Template] = []
+
+    for tpl in templates:
+        if tpl.intent and tpl.domain:
+            if tpl.intent == intent and tpl.domain == domain:
+                candidates.append(tpl)
+        elif tpl.intent:
+            if tpl.intent == intent:
+                candidates.append(tpl)
+        elif tpl.domain and tpl.domain == domain:
+            candidates.append(tpl)
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda t: (-t.specificity, t.filename))
+    return candidates[0]
+
+
+def inject_variables(body: str, variables: dict[str, str]) -> str:
+    """Replace {{variable}} placeholders with values.
+
+    Unknown variables are left as-is.
+    """
+    result = body
+    for key, value in variables.items():
+        result = result.replace(f"{{{{{key}}}}}", value)
+    return result

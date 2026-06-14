@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "promptune"
+version = "0.1.0"
+description = "Terminal prompt enhancer for macOS and Linux"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    {name = "kayumuzzaman"},
+]
+keywords = ["prompt", "cli", "ai", "terminal"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+    "prompt-toolkit>=3.0",
+    "anthropic>=0.40.0",
+    "openai>=1.0",
+    "httpx>=0.27.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "readchar>=4.0",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-mock>=3.14",
+    "ruff>=0.8.0",
+    "mypy>=1.13",
+]
+linux-daemon = [
+    "python-xlib>=0.33",
+    "dbus-next>=0.2.3",
+    "evdev>=1.7.0",
+]
+mcp = [
+    "mcp>=1.0",
+]
+
+[project.scripts]
+promptune = "promptune.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/kayumuzzaman/promptune"
+Repository = "https://github.com/kayumuzzaman/promptune"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+markers = [
+    "linux: integration tests that require a real Linux environment with X11/Wayland and system tools (xclip, xdotool, wl-clipboard, ydotool, dbus, evdev). Skip on macOS with: pytest -m 'not linux'",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tomli"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["Quartz", "ApplicationServices", "AppKit"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["Xlib", "Xlib.*", "dbus_next", "dbus_next.*", "evdev", "evdev.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["mcp", "mcp.*"]
+ignore_missing_imports = true
