@@ -104,7 +104,6 @@ def render(width, height, title, body, *, banner=None, active=None,
     if banner is not None:
         _text(d, PAD_X, y, banner[0], banner[1])
         y += LINE_H + 6
-    body_top = y
     for item in body:
         indent, s, color = item
         _text(d, PAD_X + indent * CHAR_W, y, s, color)

@@ -9,6 +9,7 @@ Promptune runs **locally**. Tier 0 (rule-based) needs no API key and no network.
 - [Features](#features)
 - [How It Works](#how-it-works)
 - [Ways to Use Promptune](#ways-to-use-promptune)
+- [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [CLI Commands](#cli-commands)
@@ -107,6 +108,23 @@ Five surfaces, one engine. Pick whichever fits your workflow:
 | **Auto-enhance hook** | Automatic on prompt submit | Upgrading weak prompts in tools that expose a hook (Claude Code, Codex) |
 
 Not every AI tool can auto-trigger Promptune. See [Auto-Enhance in AI Coding Tools](#auto-enhance-in-ai-coding-tools) for the per-tool support matrix.
+
+## Compatibility
+
+The **CLI runs in every terminal and OS** — it's a plain Python program. The convenience integrations are constrained not by your terminal emulator but by your **shell** (the inline widget) and your **OS** (the system daemon).
+
+| Surface | macOS | Linux | Windows | Requirements |
+|---------|:-----:|:-----:|:-------:|--------------|
+| **CLI** (`enhance` / `score` / `doctor` …) | ✅ | ✅ | ✅ | Python 3.9+; any terminal emulator |
+| **Interactive TUI** (Accept/Edit/Reject) | ✅ | ✅ | ✅ | a real TTY (ANSI) — degrades in pipes |
+| **Shell widget** (Ctrl+E inline) | ✅ | ✅ | ⚠️ via WSL / Git Bash | **zsh / bash / fish** only — ❌ Warp, PowerShell, nushell, cmd |
+| **System daemon** (Ctrl+Shift+E global) | ✅ | ✅ X11 / Wayland | ❌ | macOS: Accessibility grant · Linux X11: `xclip` + `xdotool` · Wayland: `wl-clipboard` + `input` group |
+| **Auto-enhance hook** (silent gate) | ✅ | ✅ | ✅ | tool exposing a `UserPromptSubmit` hook → **Claude Code, Codex** |
+| **MCP server** | ✅ | ✅ | ✅ | any MCP client (Claude Code, Cursor, Codex …) |
+
+**Terminal emulators:** the CLI, TUI, and widget work in iTerm2, kitty, Alacritty, GNOME Terminal, Windows Terminal, tmux, and over SSH. The one explicit exception is the **Ctrl+E widget in Warp**, which Warp's input model doesn't support (`promptune doctor` flags it and points you to `promptune enhance`).
+
+> `promptune doctor` reports exactly what's available on your machine — tiers, shell-widget compatibility, daemon permissions, and the auto-enhance hook per detected tool.
 
 ## Installation
 
