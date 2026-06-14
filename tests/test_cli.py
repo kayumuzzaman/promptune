@@ -24,6 +24,13 @@ def test_version_exists():
     assert len(promptune.__version__) > 0
 
 
+def test_version_flag_outputs_version():
+    """`promptune --version` prints the version and exits 0."""
+    result = CliRunner().invoke(main, ["--version"])
+    assert result.exit_code == 0
+    assert promptune.__version__ in result.output
+
+
 def test_version_format():
     """Version matches semver pattern."""
     pattern = r"^\d+\.\d+\.\d+$"

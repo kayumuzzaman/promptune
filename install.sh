@@ -6,7 +6,6 @@
 #   curl -fsSL https://raw.githubusercontent.com/kayumuzzaman/promptune/main/install.sh -o install.sh
 #   bash install.sh
 
-REPO="https://github.com/kayumuzzaman/promptune.git"
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -21,9 +20,8 @@ error() { echo -e "${RED}[promptune]${NC} $1" >&2; }
 check_os() {
     local os
     os="$(uname)"
-    if [ "$os" != "Darwin" ]; then
-        error "Promptune requires macOS (detected: $os)."
-        error "Linux and other platforms are not supported yet."
+    if [ "$os" != "Darwin" ] && [ "$os" != "Linux" ]; then
+        error "Promptune supports macOS and Linux (detected: $os)."
         exit 1
     fi
 }
@@ -89,15 +87,15 @@ install_pipx() {
 }
 
 install_promptune() {
-    info "Installing promptune from GitHub..."
+    info "Installing promptune from PyPI..."
     if command -v promptune &> /dev/null; then
         info "promptune is already installed. Upgrading..."
-        pipx upgrade promptune 2>/dev/null || pipx install --force "git+${REPO}" || {
+        pipx upgrade promptune 2>/dev/null || pipx install --force promptune || {
             error "Failed to upgrade promptune."
             exit 1
         }
     else
-        pipx install "git+${REPO}" || {
+        pipx install promptune || {
             error "Failed to install promptune."
             error "This could be a network issue. Check your internet connection and try again."
             exit 1
@@ -139,6 +137,13 @@ print_next_steps() {
     echo ""
     echo "  4. Press Ctrl+E in your terminal to enhance prompts!"
     echo ""
+    if [ "$(uname)" = "Linux" ]; then
+        echo "  Linux — for the system-wide hotkey daemon, also install:"
+        echo "     X11:     sudo apt install xclip xdotool"
+        echo "     Wayland: sudo apt install wl-clipboard ydotool   (+ add yourself to the 'input' group)"
+        echo "     and:     pipx inject promptune python-xlib dbus-next evdev"
+        echo ""
+    fi
 }
 
 check_ollama() {

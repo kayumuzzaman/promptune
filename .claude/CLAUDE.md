@@ -53,10 +53,11 @@ promptune/
 │   │       ├── linux_x11.py           # X11: XGrabKey, xclip, xdotool
 │   │       ├── linux_wayland.py       # Wayland: portal/evdev, wl-clipboard
 │   │       └── linux_service.py       # systemd service + dependency checker
-│   ├── gate.py                        # Auto-enhance gate (score → enhance → clipboard)
+│   ├── gate.py                        # Auto-enhance gate (score → enhance → inject)
 │   ├── hooks/
 │   │   ├── __init__.py                # HookInstaller protocol, get_installers(), detect_tools()
-│   │   └── claude_code.py             # Claude Code hook installer (settings.json)
+│   │   ├── claude_code.py             # Claude Code hook installer (settings.json)
+│   │   └── codex.py                   # Codex CLI hook installer (~/.codex/hooks.json)
 │   ├── mcp/
 │   │   ├── __init__.py                # Package marker
 │   │   └── server.py                  # FastMCP server (enhance + score tools, stdio)
@@ -66,7 +67,7 @@ promptune/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── USER_GUIDE.md
-│   └── superpowers/                   # Specs, plans, blueprints
+│   └── assets/                        # Demo GIFs (embedded in README)
 └── pyproject.toml
 ```
 
@@ -85,17 +86,6 @@ pytest tests/test_engine.py -v
 # Coverage report
 pytest --cov=promptune --cov-report=term-missing
 ```
-
-## Implementation Plans
-
-Completed plans:
-- `docs/superpowers/plans/2026-03-15-phase1-next-iteration.md` — 3-tier engine, scoring, context, history
-- `docs/superpowers/plans/2026-03-17-cross-terminal-shell-integration.md` — Zsh/Bash/Fish widgets
-- `docs/superpowers/plans/2026-03-17-interactive-config-setup.md` — Config setup wizard
-- `docs/superpowers/plans/2026-03-28-enhancement-phase.md` — Dedup, preferences, templates, Ollama auto-check
-- `docs/superpowers/plans/2026-03-28-phase2-os-hotkey-daemon.md` — OS-level hotkey daemon (macOS)
-- `docs/superpowers/plans/2026-03-29-phase3-linux-daemon.md` — Linux daemon (X11/Wayland platform abstraction)
-- `docs/superpowers/plans/2026-04-05-mcp-server-and-auto-enhance.md` — MCP server, auto-enhance gate, hooks, score command
 
 ## Config Schema (Current)
 

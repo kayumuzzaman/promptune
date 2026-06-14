@@ -42,11 +42,11 @@ def _create_mock_binary(
     return bin_dir
 
 
-def test_rejects_non_macos(tmp_path: Path) -> None:
-    """Script exits with error on non-macOS systems."""
-    # Create a fake uname that reports "Linux"
+def test_rejects_unsupported_os(tmp_path: Path) -> None:
+    """Script exits with error on an unsupported OS (not macOS or Linux)."""
+    # Create a fake uname that reports an unsupported OS
     bin_dir = _create_mock_binary(
-        tmp_path, "uname", '#!/bin/bash\necho "Linux"'
+        tmp_path, "uname", '#!/bin/bash\necho "FreeBSD"'
     )
     result = _run_install(
         env_overrides={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
@@ -54,6 +54,30 @@ def test_rejects_non_macos(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert "macOS" in result.stderr or "macOS" in result.stdout
+
+
+def test_accepts_linux(tmp_path: Path) -> None:
+    """Script proceeds past the OS gate on Linux and shows the daemon hint."""
+    bin_dir = _create_mock_binary(
+        tmp_path, "uname", '#!/bin/bash\necho "Linux"'
+    )
+    _create_mock_binary(
+        tmp_path,
+        "python3",
+        '#!/bin/bash\n'
+        'if [ "$1" = "--version" ]; then echo "Python 3.12.0"; '
+        'elif [ "$1" = "-c" ]; then echo "3 12"; '
+        'else exit 0; fi',
+    )
+    _create_mock_binary(tmp_path, "pipx", '#!/bin/bash\nexit 0')
+    _create_mock_binary(tmp_path, "promptune", '#!/bin/bash\necho "0.1.0"')
+    result = _run_install(
+        env_overrides={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        tmp_path=tmp_path,
+    )
+    assert result.returncode == 0
+    output = result.stdout + result.stderr
+    assert "Linux" in output
 
 
 def test_rejects_root(tmp_path: Path) -> None:

@@ -18,21 +18,19 @@ Enhanced:      "Build a full-stack todo application with the following requireme
 
 ## Installation
 
-### From source (recommended for now)
+### Recommended — pipx (macOS + Linux)
 
 ```bash
-git clone https://github.com/kayumuzzaman/promptune.git
-cd promptune
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+pipx install promptune        # or: python3 -m pip install --user promptune
 ```
+
+For optional extras (MCP server, Linux daemon) and the one-line installer, see the [README](../README.md#installation).
 
 ### Verify installation
 
 ```bash
-promptune version
-# Output: 0.1.0
+promptune --version
+# Output: promptune, version 0.1.0
 ```
 
 ## Getting Started
