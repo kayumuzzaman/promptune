@@ -139,9 +139,18 @@ Verify with `promptune --version`, then `promptune doctor`.
 
 ### Optional extras
 
+Install **with** the extras you want — use one of these *instead of* the base command above:
+
 ```bash
-pipx install "promptune[mcp]"               # MCP server (enables `promptune mcp`)
-pipx install "promptune[mcp,linux-daemon]"  # + Linux system-daemon support
+pipx install "promptune[mcp]"               # + MCP server (enables `promptune mcp`)
+pipx install "promptune[mcp,linux-daemon]"  # + MCP and Linux system-daemon support
+```
+
+Already installed plain `promptune`? Add the deps to the existing pipx venv instead (a second `pipx install` is a no-op):
+
+```bash
+pipx inject promptune "mcp>=1.0"                    # MCP server
+pipx inject promptune python-xlib dbus-next evdev   # Linux daemon
 ```
 
 The Linux system-wide hotkey daemon also needs OS tools:
