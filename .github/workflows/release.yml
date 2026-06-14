@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -64,6 +65,9 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    # Gated: only cut a GitHub Release when publishing is enabled, so a stray
+    # tag can't create a release pointing at a version that isn't on PyPI.
+    if: ${{ vars.PUBLISH_TO_PYPI == 'true' }}
 
     steps:
       - name: Download build artifacts
