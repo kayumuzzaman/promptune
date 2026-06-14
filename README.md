@@ -32,7 +32,7 @@ Promptune runs **locally**. Tier 0 (rule-based) needs no API key and no network.
 - **System-wide daemon**: background hotkey daemon (Ctrl+Shift+E) — enhances selected text in any macOS or Linux app
 - **Shell integration**: Ctrl+E widget for Zsh, Bash, and Fish — enhances prompts inline
 - **MCP server**: exposes `enhance` and `score` tools to any MCP client (Claude Code, Cursor, Codex)
-- **Auto-enhance hook**: intercepts low-quality prompts in AI coding tools, enhances them, and copies the result to your clipboard
+- **Auto-enhance hook**: intercepts low-quality prompts in AI coding tools, enhances them, and silently injects the enhanced prompt as context
 - **Provider-specific formatting**: auto-selects XML, Markdown, or Plain based on target model
 - **Interactive setup wizard**: guided config init with provider selection and masked API key input
 - **Semantic deduplication**: detects near-duplicate prompts and returns cached results instantly
@@ -103,8 +103,10 @@ Five surfaces, one engine. Pick whichever fits your workflow:
 | **CLI** | `promptune enhance "..."` | Scripting, one-offs, piping |
 | **Shell widget** | **Ctrl+E** in your terminal | Enhancing the command line you're typing |
 | **System daemon** | **Ctrl+Shift+E** anywhere | Enhancing selected text in any app (browser, editor, chat) |
-| **MCP server** | Ask your AI tool to enhance/score | Inside Claude Code, Cursor, Codex |
-| **Auto-enhance hook** | Automatic on prompt submit | Silently upgrading weak prompts in AI coding tools |
+| **MCP server** | Ask your AI tool to enhance/score | Inside Claude Code, Cursor, Codex, or any MCP client |
+| **Auto-enhance hook** | Automatic on prompt submit | Upgrading weak prompts in tools that expose a hook (Claude Code, Codex) |
+
+Not every AI tool can auto-trigger Promptune. See [Auto-Enhance in AI Coding Tools](#auto-enhance-in-ai-coding-tools) for the per-tool support matrix.
 
 ## Installation
 
@@ -167,7 +169,7 @@ promptune doctor
 
 Now press **Ctrl+E** in your terminal to enhance the current line.
 
-> `promptune config init` also detects installed AI coding tools (e.g. Claude Code) and offers to install the [auto-enhance hook](#auto-enhance-in-ai-coding-tools) and register the [MCP server](#mcp-server-setup) for you. Both are optional.
+> `promptune config init` also detects installed AI coding tools (Claude Code, Codex CLI, …) and offers to install the [auto-enhance hook](#auto-enhance-in-ai-coding-tools) and register the [MCP server](#mcp-server-setup) for you. Both are optional.
 
 ## CLI Commands
 
@@ -375,25 +377,37 @@ Once registered, ask your AI assistant naturally — e.g. *"score this prompt"* 
 
 ## Auto-Enhance in AI Coding Tools
 
-The auto-enhance hook intercepts prompts you submit in an AI coding tool, and when a prompt looks weak it enhances it and puts the improved version on your clipboard.
+The auto-enhance hook intercepts prompts you submit in an AI coding tool, and when a prompt looks weak it enhances it and silently injects the improved version into the conversation as context — no clipboard, no manual paste.
 
-**How it works** — the installer adds a `UserPromptSubmit` hook to `~/.claude/settings.json` that pipes each submitted prompt into `promptune gate`. The gate:
+### Which tools auto-trigger?
+
+Promptune integrates with AI coding tools two ways: an **auto-enhance hook** (fires automatically on every prompt you submit inside the tool's interactive session) and the **MCP server** (the model calls Promptune on request — never automatic). A tool can only auto-trigger if it exposes a `UserPromptSubmit` hook *and* Promptune ships an installer for it.
+
+| Tool | Auto-trigger on prompt submit? | How |
+|------|-------------------------------|-----|
+| **Claude Code** | ✅ Yes | `UserPromptSubmit` hook in `~/.claude/settings.json` |
+| **Codex CLI** | ✅ Yes | `UserPromptSubmit` hook in `~/.codex/hooks.json` |
+| **Cursor / other MCP clients** | ❌ No | Use the [MCP server](#mcp-server-setup) (ask the tool to enhance) or run `promptune enhance` manually and paste/pipe the result |
+
+> **Note on injection vs. replacement:** the gate does **not** literally replace or overwrite the prompt text you typed — neither Claude Code nor Codex allows a hook to do that. Instead it **injects the enhanced prompt as additional context alongside your original**, so the model receives both and acts on the enhanced version automatically. The `!` bypass prefix still sends your prompt through raw, with no enhancement and no injection.
+
+**How it works** — the installer adds a `UserPromptSubmit` hook (to `~/.claude/settings.json` for Claude Code, or `~/.codex/hooks.json` for Codex CLI) that pipes each submitted prompt into `promptune gate`. Both tools use the same hook shape and pass the prompt in the same `prompt` field, so the one gate works for both. The gate:
 
 1. Skips if auto-enhance is disabled.
 2. Skips if the prompt starts with the **bypass prefix** (`!` by default).
 3. Skips prompts shorter than `min_words`.
 4. Scores the prompt; if PQS ≥ `threshold`, lets it through unchanged.
-5. Otherwise enhances it, copies the enhanced prompt to your clipboard, and blocks the weak one so you can paste the better version.
+5. Otherwise enhances it and injects the enhanced prompt into the model's context via the hook's `additionalContext` output (exit 0, the prompt proceeds), so the model acts on the enhanced version automatically — no clipboard, no paste.
 
 ### Install
 
-Run the wizard and accept the auto-enhance prompt when it detects your tool:
+Run the wizard and accept the auto-enhance prompt when it detects your tool (Claude Code, Codex CLI, …):
 
 ```bash
 promptune config init
 ```
 
-Verify:
+Verify — `doctor` prints an Auto-enhance status line per detected tool (Claude Code when `~/.claude/` exists, Codex when `~/.codex/` exists):
 
 ```bash
 promptune doctor   # shows: Auto-enhance ✓ <tool> (threshold: NN)
@@ -402,6 +416,25 @@ promptune doctor   # shows: Auto-enhance ✓ <tool> (threshold: NN)
 ### Manual (Claude Code)
 
 Add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "promptune gate" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Manual (Codex CLI)
+
+Add to `~/.codex/hooks.json` (same shape — Codex's `UserPromptSubmit` payload uses the same `prompt` field):
 
 ```json
 {
