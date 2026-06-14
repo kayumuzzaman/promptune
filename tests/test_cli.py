@@ -538,7 +538,11 @@ class TestShellInitCLI:
 
     def test_default_outputs_zsh(self) -> None:
         runner = CliRunner()
-        result = runner.invoke(main, ["shell-init"])
+        # Pin $SHELL so detection is deterministic across CI platforms
+        # (the Linux runner defaults to bash, which has no bindkey).
+        result = runner.invoke(
+            main, ["shell-init"], env={"SHELL": "/bin/zsh"}
+        )
         assert result.exit_code == 0
         assert "bindkey" in result.output
 
@@ -882,6 +886,12 @@ def test_daemon_install_calls_service(mocker):
         "promptune.daemon.platform.get_platform",
         return_value=mock_platform,
     )
+    # On Linux, `daemon install` runs a real dependency check before
+    # installing; stub it so the install path is exercised on every platform.
+    mock_checker = mocker.patch(
+        "promptune.daemon.platform.linux_service.LinuxDependencyChecker"
+    )
+    mock_checker.return_value.check.return_value = []
     runner = CliRunner()
     result = runner.invoke(main, ["daemon", "install"])
     assert result.exit_code == 0
@@ -1297,6 +1307,10 @@ def test_daemon_restart_calls_both(mocker):
 # ── Daemon setup (macOS path) ────────────────────────────────
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="patches macOS-only promptune.daemon.hotkey (unimportable on Linux)",
+)
 def test_daemon_setup_macos_already_granted(mocker):
     """setup on macOS when already granted → early return."""
     mocker.patch("sys.platform", "darwin")
@@ -1310,6 +1324,10 @@ def test_daemon_setup_macos_already_granted(mocker):
     assert "already granted" in result.output
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="patches macOS-only promptune.daemon.hotkey (unimportable on Linux)",
+)
 def test_daemon_setup_macos_wait_grant(mocker):
     """setup on macOS waits then grants."""
     mocker.patch("sys.platform", "darwin")
@@ -1335,6 +1353,10 @@ def test_daemon_setup_macos_wait_grant(mocker):
     assert "granted" in result.output
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="patches macOS-only promptune.daemon.hotkey (unimportable on Linux)",
+)
 def test_daemon_setup_macos_timeout(mocker):
     """setup on macOS times out after 60 checks."""
     mocker.patch("sys.platform", "darwin")

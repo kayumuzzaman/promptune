@@ -58,9 +58,17 @@ def test_rejects_non_macos(tmp_path: Path) -> None:
 
 def test_rejects_root(tmp_path: Path) -> None:
     """Script exits with error when PROMPTUNE_FAKE_EUID=0 is set."""
-    # The script checks PROMPTUNE_FAKE_EUID for testing, falls back to EUID
+    # The macOS gate runs before the root check, so mock uname -> Darwin to
+    # reach the root check on non-macOS CI runners. The script checks
+    # PROMPTUNE_FAKE_EUID for testing, falling back to the real EUID.
+    bin_dir = _create_mock_binary(
+        tmp_path, "uname", '#!/bin/bash\necho "Darwin"'
+    )
     result = _run_install(
-        env_overrides={"PROMPTUNE_FAKE_EUID": "0"},
+        env_overrides={
+            "PROMPTUNE_FAKE_EUID": "0",
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        },
         tmp_path=tmp_path,
     )
     assert result.returncode != 0

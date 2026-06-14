@@ -7,9 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin", reason="macOS-only"
-)
+if sys.platform != "darwin":
+    pytest.skip("macOS-only", allow_module_level=True)
 
 from promptune.daemon.platform.base import (  # noqa: E402
     ActiveWindowBackend,
