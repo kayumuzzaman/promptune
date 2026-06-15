@@ -186,10 +186,11 @@ class X11Clipboard(ClipboardBackend):
     def write(self, text: str) -> None:
         """Write *text* to the clipboard.
 
-        Never raises: if xclip is missing or fails it logs an error so the
-        daemon survives a broken environment.
+        Raises RuntimeError if xclip is missing or fails so daemon delivery can
+        notify the user instead of reporting success.
         """
-        self._write(text)
+        if not self._write(text):
+            raise RuntimeError("xclip failed to write clipboard")
 
     def _write(self, text: str) -> bool:
         """Write to the clipboard, returning True on success."""

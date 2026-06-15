@@ -20,6 +20,7 @@ import asyncio
 import subprocess
 import sys
 import types
+from collections.abc import Callable
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -57,15 +58,22 @@ class _FakeVariant:
         )
 
 
+class _FakeMessageType:
+    SIGNAL = "signal"
+
+
 def _install_fake_dbus(monkeypatch: pytest.MonkeyPatch) -> None:
     """Inject minimal fake ``dbus_next`` + ``dbus_next.aio`` modules."""
     dbus_mod = types.ModuleType("dbus_next")
     dbus_mod.Variant = _FakeVariant  # type: ignore[attr-defined]
     aio_mod = types.ModuleType("dbus_next.aio")
     aio_mod.MessageBus = MagicMock(name="MessageBus")  # type: ignore[attr-defined]
+    constants_mod = types.ModuleType("dbus_next.constants")
+    constants_mod.MessageType = _FakeMessageType  # type: ignore[attr-defined]
     dbus_mod.aio = aio_mod  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "dbus_next", dbus_mod)
     monkeypatch.setitem(sys.modules, "dbus_next.aio", aio_mod)
+    monkeypatch.setitem(sys.modules, "dbus_next.constants", constants_mod)
     return aio_mod
 
 
@@ -96,9 +104,10 @@ class TestWaylandHotkey:
 
     def test_portal_session_handle_path(self) -> None:
         hk = WaylandHotkey()
-        path = hk._portal_session_handle("promptune_123")
+        bus = types.SimpleNamespace(unique_name=":1.42")
+        path = hk._portal_session_handle(bus, "promptune_123")
         assert path == (
-            "/org/freedesktop/portal/desktop/session/promptune_123"
+            "/org/freedesktop/portal/desktop/session/1_42/promptune_123"
         )
 
     def test_portal_variant_wraps_value(self, monkeypatch) -> None:
@@ -147,14 +156,22 @@ class TestWaylandHotkey:
         aio_mod = _install_fake_dbus(monkeypatch)
 
         shortcuts = MagicMock(name="shortcuts")
+        events: list[str] = []
+        expected_session_handle = ""
 
         async def _create_session(options):
-            # session_handle_token must be passed so we can predict the path
+            events.append("create")
             assert "session_handle_token" in options
             assert "handle_token" in options
+            nonlocal expected_session_handle
+            expected_session_handle = hk._portal_session_handle(
+                bus, options["session_handle_token"].value
+            )
             return "/req/create"
 
         async def _bind(session_handle, shortcuts_arg, parent, options):
+            events.append("bind")
+            assert session_handle == expected_session_handle
             return "/req/bind"
 
         shortcuts.call_create_session = _create_session
@@ -164,6 +181,7 @@ class TestWaylandHotkey:
         proxy.get_interface.return_value = shortcuts
 
         bus = MagicMock(name="bus")
+        bus.unique_name = ":1.42"
 
         async def _connect():
             return bus
@@ -187,10 +205,42 @@ class TestWaylandHotkey:
         hk.stop()
 
         async def _ok(*args, **kwargs):
-            return True
+            request_path = str(args[-1])
+            events.append(f"await:{request_path}")
+            if "/promptune_create_" in request_path:
+                return {"session_handle": expected_session_handle}
+            return {}
 
-        with patch.object(hk, "_await_portal_response", side_effect=_ok):
+        original_watch = hk._watch_portal_response
+
+        def _watch(bus_arg, request_path):
+            events.append(f"watch:{request_path}")
+            return original_watch(bus_arg, request_path)
+
+        with (
+            patch.object(hk, "_watch_portal_response", side_effect=_watch),
+            patch.object(hk, "_await_portal_response", side_effect=_ok),
+        ):
             hk._listen_portal()
+
+        create_wait = next(
+            e
+            for e in events
+            if e.startswith(
+                "watch:/org/freedesktop/portal/desktop/request/1_42/"
+                "promptune_create_"
+            )
+        )
+        bind_wait = next(
+            e
+            for e in events
+            if e.startswith(
+                "watch:/org/freedesktop/portal/desktop/request/1_42/"
+                "promptune_bind_"
+            )
+        )
+        assert events.index(create_wait) < events.index("create")
+        assert events.index(bind_wait) < events.index("bind")
 
         # Activated handler was registered and bus disconnected cleanly.
         shortcuts.on_activated.assert_called_once()
@@ -226,6 +276,7 @@ class TestWaylandHotkey:
 
         bus.introspect = MagicMock(side_effect=_introspect)
         bus.get_proxy_object.return_value = proxy
+        bus.unique_name = ":1.42"
 
         msgbus_instance = MagicMock()
         msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
@@ -235,7 +286,7 @@ class TestWaylandHotkey:
         hk.register("ctrl+shift+e", MagicMock())
 
         async def _denied(*args, **kwargs):
-            return False
+            return None
 
         with (
             patch.object(hk, "_await_portal_response", side_effect=_denied),
@@ -243,83 +294,117 @@ class TestWaylandHotkey:
         ):
             hk._listen_portal()
 
-    def test_await_portal_response_fires_on_success(self) -> None:
-        hk = WaylandHotkey()
-        request = MagicMock(name="request")
-        captured: list = []
+    def test_listen_portal_raises_when_bind_denied(
+        self, monkeypatch
+    ) -> None:
+        aio_mod = _install_fake_dbus(monkeypatch)
 
-        def _on_response(cb):
-            captured.append(cb)
-
-        request.on_response = _on_response
-
-        req_proxy = MagicMock()
-        req_proxy.get_interface.return_value = request
-
-        bus = MagicMock()
-
-        async def _introspect(*args, **kwargs):
-            return MagicMock()
-
-        bus.introspect = MagicMock(side_effect=_introspect)
-        bus.get_proxy_object.return_value = req_proxy
-
-        async def _run() -> bool:
-            # Fire the response callback shortly after the coroutine awaits.
-            task = asyncio.ensure_future(
-                hk._await_portal_response(bus, MagicMock(), "/req/x")
-            )
-            await asyncio.sleep(0)
-            captured[0](0, {})  # response code 0 == success
-            return await task
-
-        assert asyncio.run(_run()) is True
-
-    def test_await_portal_response_timeout_returns_false(self) -> None:
-        hk = WaylandHotkey(portal_timeout=0.01)
-        request = MagicMock(name="request")
-        request.on_response = MagicMock()  # never invoked -> timeout
-
-        req_proxy = MagicMock()
-        req_proxy.get_interface.return_value = request
-        bus = MagicMock()
-
-        async def _introspect(*args, **kwargs):
-            return MagicMock()
-
-        bus.introspect = MagicMock(side_effect=_introspect)
-        bus.get_proxy_object.return_value = req_proxy
-
-        result = asyncio.run(
-            hk._await_portal_response(bus, MagicMock(), "/req/x")
+        shortcuts = MagicMock(name="shortcuts")
+        session_handle = (
+            "/org/freedesktop/portal/desktop/session/1_42/promptune_session"
         )
-        assert result is False
 
-    def test_await_portal_response_nonzero_code_returns_false(self) -> None:
-        hk = WaylandHotkey()
-        request = MagicMock(name="request")
-        captured: list = []
-        request.on_response = lambda cb: captured.append(cb)
+        async def _create_session(options):
+            return "/req/create"
 
-        req_proxy = MagicMock()
-        req_proxy.get_interface.return_value = request
-        bus = MagicMock()
+        async def _bind(session_handle_arg, shortcuts_arg, parent, options):
+            assert session_handle_arg == session_handle
+            return "/req/bind"
+
+        shortcuts.call_create_session = _create_session
+        shortcuts.call_bind_shortcuts = _bind
+
+        proxy = MagicMock(name="proxy")
+        proxy.get_interface.return_value = shortcuts
+
+        bus = MagicMock(name="bus")
+        bus.unique_name = ":1.42"
+
+        async def _connect():
+            return bus
 
         async def _introspect(*args, **kwargs):
             return MagicMock()
 
         bus.introspect = MagicMock(side_effect=_introspect)
-        bus.get_proxy_object.return_value = req_proxy
+        bus.get_proxy_object.return_value = proxy
 
-        async def _run() -> bool:
-            task = asyncio.ensure_future(
-                hk._await_portal_response(bus, MagicMock(), "/req/x")
+        msgbus_instance = MagicMock()
+        msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
+        aio_mod.MessageBus.return_value = msgbus_instance
+
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", MagicMock())
+
+        async def _response(*args, **kwargs):
+            request_path = str(args[-1])
+            if "/promptune_create_" in request_path:
+                return {"session_handle": session_handle}
+            return None
+
+        with (
+            patch.object(hk, "_await_portal_response", side_effect=_response),
+            pytest.raises(RuntimeError, match="BindShortcuts was denied"),
+        ):
+            hk._listen_portal()
+
+    def test_await_portal_response_fires_on_success(self, monkeypatch) -> None:
+        _install_fake_dbus(monkeypatch)
+        hk = WaylandHotkey()
+        bus = MagicMock()
+        handlers: list[Callable[[object], None]] = []
+        bus.add_message_handler = lambda handler: handlers.append(handler)
+
+        async def _run() -> dict[str, object] | None:
+            response = hk._watch_portal_response(bus, "/req/x")
+            handlers[0](
+                types.SimpleNamespace(
+                    message_type=_FakeMessageType.SIGNAL,
+                    path="/req/x",
+                    interface="org.freedesktop.portal.Request",
+                    member="Response",
+                    body=[0, {"session_handle": "/session/x"}],
+                )
             )
-            await asyncio.sleep(0)
-            captured[0](1, {})  # response code 1 == cancelled/denied
-            return await task
+            return await hk._await_portal_response(response, "/req/x")
 
-        assert asyncio.run(_run()) is False
+        assert asyncio.run(_run()) == {"session_handle": "/session/x"}
+
+    def test_await_portal_response_timeout_returns_false(self, monkeypatch) -> None:
+        _install_fake_dbus(monkeypatch)
+        hk = WaylandHotkey(portal_timeout=0.01)
+        bus = MagicMock()
+        bus.add_message_handler = MagicMock()
+
+        async def _run() -> dict[str, object] | None:
+            response = hk._watch_portal_response(bus, "/req/x")
+            return await hk._await_portal_response(response, "/req/x")
+
+        assert asyncio.run(_run()) is None
+
+    def test_await_portal_response_nonzero_code_returns_false(
+        self, monkeypatch
+    ) -> None:
+        _install_fake_dbus(monkeypatch)
+        hk = WaylandHotkey()
+        bus = MagicMock()
+        handlers: list[Callable[[object], None]] = []
+        bus.add_message_handler = lambda handler: handlers.append(handler)
+
+        async def _run() -> dict[str, object] | None:
+            response = hk._watch_portal_response(bus, "/req/x")
+            handlers[0](
+                types.SimpleNamespace(
+                    message_type=_FakeMessageType.SIGNAL,
+                    path="/req/x",
+                    interface="org.freedesktop.portal.Request",
+                    member="Response",
+                    body=[1, {}],
+                )
+            )
+            return await hk._await_portal_response(response, "/req/x")
+
+        assert asyncio.run(_run()) is None
 
     # -- evdev combo parsing ---------------------------------------------
 

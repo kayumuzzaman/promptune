@@ -9,6 +9,7 @@ Notifications: notify-send.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -16,7 +17,7 @@ import os
 import subprocess
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from promptune.daemon.platform.base import (
     ActiveWindowBackend,
@@ -69,14 +70,21 @@ class WaylandHotkey(HotkeyBackend):
             except Exception:
                 _log.error("Both portal and evdev hotkey failed", exc_info=True)
 
-    def _portal_session_handle(self, token: str) -> str:
-        """Compute the expected session object path for *token*.
+    def _portal_sender_id(self, bus: object) -> str:
+        unique_name = getattr(bus, "unique_name", "")
+        if callable(unique_name):
+            unique_name = unique_name()
+        if not unique_name:
+            raise RuntimeError("D-Bus unique name unavailable")
+        return str(unique_name).lstrip(":").replace(".", "_")
 
-        The portal derives the session object path from the unique bus name
-        of the sender (with ``.``/``:`` replaced by ``_``) and the
-        ``session_handle_token`` supplied in the CreateSession options.
-        """
-        return f"/org/freedesktop/portal/desktop/session/{token}"
+    def _portal_request_path(self, bus: object, token: str) -> str:
+        sender = self._portal_sender_id(bus)
+        return f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+
+    def _portal_session_handle(self, bus: object, token: str) -> str:
+        sender = self._portal_sender_id(bus)
+        return f"/org/freedesktop/portal/desktop/session/{sender}/{token}"
 
     def _listen_portal(self) -> None:
         # TODO(linux-ci): Integration test requires a running xdg-desktop-portal
@@ -103,8 +111,6 @@ class WaylandHotkey(HotkeyBackend):
         #   live portal (no Wayland hardware on macOS CI); it is covered by
         #   mocked unit tests and a real-portal integration test marked
         #   @pytest.mark.linux.
-        import asyncio
-
         from dbus_next.aio import MessageBus  # type: ignore[import]
 
         async def _portal_loop() -> None:
@@ -122,25 +128,38 @@ class WaylandHotkey(HotkeyBackend):
                 "org.freedesktop.portal.GlobalShortcuts"
             )
 
-            session_token = f"promptune_{os.getpid()}"
-            session_handle = self._portal_session_handle(session_token)
+            session_token = f"promptune_session_{os.getpid()}"
+            create_token = f"promptune_create_{os.getpid()}"
+            create_request_path = self._portal_request_path(bus, create_token)
+            create_response = self._watch_portal_response(
+                bus, create_request_path
+            )
 
             # CreateSession returns a Request handle, not the session handle.
             # The session only becomes valid once the portal confirms it; we
-            # pass session_handle_token so we can predict the resulting path.
-            request_handle = await shortcuts.call_create_session(
+            # subscribe to the Request response before issuing the call so a
+            # fast portal response cannot be missed.
+            await shortcuts.call_create_session(
                 {
-                    "handle_token": _portal_variant("s", session_token),
+                    "handle_token": _portal_variant("s", create_token),
                     "session_handle_token": _portal_variant("s", session_token),
                 }
             )
-            ok = await self._await_portal_response(
-                bus, introspection, request_handle
+            create_results = await self._await_portal_response(
+                create_response, create_request_path
             )
-            if not ok:
+            if create_results is None:
                 raise RuntimeError("Portal CreateSession was denied or timed out")
+            session_handle = self._portal_response_value(
+                create_results.get("session_handle")
+            )
+            if not isinstance(session_handle, str) or not session_handle:
+                session_handle = self._portal_session_handle(bus, session_token)
 
-            bind_handle = await shortcuts.call_bind_shortcuts(
+            bind_token = f"promptune_bind_{os.getpid()}"
+            bind_request_path = self._portal_request_path(bus, bind_token)
+            bind_response = self._watch_portal_response(bus, bind_request_path)
+            await shortcuts.call_bind_shortcuts(
                 session_handle,
                 [
                     (
@@ -151,9 +170,13 @@ class WaylandHotkey(HotkeyBackend):
                     )
                 ],
                 "",
-                {},
+                {"handle_token": _portal_variant("s", bind_token)},
             )
-            await self._await_portal_response(bus, introspection, bind_handle)
+            bind_results = await self._await_portal_response(
+                bind_response, bind_request_path
+            )
+            if bind_results is None:
+                raise RuntimeError("Portal BindShortcuts was denied or timed out")
 
             def on_activated(
                 session: str, shortcut_id: str, timestamp: int, options: dict
@@ -170,41 +193,57 @@ class WaylandHotkey(HotkeyBackend):
 
         asyncio.run(_portal_loop())
 
-    async def _await_portal_response(
-        self, bus: object, introspection: object, request_path: str
-    ) -> bool:
-        """Wait for the Request ``Response`` signal at *request_path*.
+    def _portal_response_value(self, value: object) -> object:
+        return getattr(value, "value", value)
 
-        Returns True if the portal responded with code 0 (success) before the
-        timeout, False otherwise.  Any portal that never answers (or denies the
-        request) causes ``listen`` to fall back to evdev.
-        """
-        import asyncio
+    def _watch_portal_response(
+        self, bus: object, request_path: str
+    ) -> asyncio.Future[dict[str, Any] | None]:
+        from dbus_next.constants import MessageType  # type: ignore[import]
 
         loop = asyncio.get_event_loop()
-        done: asyncio.Future[bool] = loop.create_future()
+        done: asyncio.Future[dict[str, Any] | None] = loop.create_future()
 
-        req_intro = await bus.introspect(  # type: ignore[attr-defined]
-            "org.freedesktop.portal.Desktop", request_path
-        )
-        req_proxy = bus.get_proxy_object(  # type: ignore[attr-defined]
-            "org.freedesktop.portal.Desktop", request_path, req_intro
-        )
-        request = req_proxy.get_interface("org.freedesktop.portal.Request")
+        def on_message(message: object) -> None:
+            if done.done():
+                return
+            if getattr(message, "message_type", None) != MessageType.SIGNAL:
+                return
+            if getattr(message, "path", None) != request_path:
+                return
+            if (
+                getattr(message, "interface", None)
+                != "org.freedesktop.portal.Request"
+            ):
+                return
+            if getattr(message, "member", None) != "Response":
+                return
+            body = getattr(message, "body", [])
+            if len(body) < 2:
+                done.set_result(None)
+                return
+            response, results = body[0], body[1]
+            done.set_result(results if response == 0 else None)
 
-        def on_response(response: int, results: dict) -> None:
-            if not done.done():
-                done.set_result(response == 0)
+        bus.add_message_handler(on_message)  # type: ignore[attr-defined]
 
-        request.on_response(on_response)
+        def cleanup(_future: asyncio.Future[dict[str, Any] | None]) -> None:
+            with contextlib.suppress(Exception):
+                bus.remove_message_handler(on_message)  # type: ignore[attr-defined]
+
+        done.add_done_callback(cleanup)
+        return done
+
+    async def _await_portal_response(
+        self,
+        response: asyncio.Future[dict[str, Any] | None],
+        request_path: str,
+    ) -> dict[str, Any] | None:
         try:
-            return await asyncio.wait_for(done, timeout=self._portal_timeout)
+            return await asyncio.wait_for(response, timeout=self._portal_timeout)
         except asyncio.TimeoutError:
             _log.warning("Portal request %s timed out", request_path)
-            return False
-        finally:
-            with contextlib.suppress(Exception):
-                request.off_response(on_response)
+            return None
 
     def _listen_evdev(self) -> None:
         # TODO(linux-ci): Integration test requires the 'input' group membership

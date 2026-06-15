@@ -9,14 +9,14 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-14 |
-| Branch | main |
+| Date | 2026-06-15 |
+| Branch | feat/linux-daemon-hardening |
 | Python | 3.14.3 |
-| Total Tests | 837 |
-| Test Result | **837 passed, 0 failed** |
-| Coverage | **93%** (target ≥ 90%) ✅ |
+| Total Tests | 932 |
+| Test Result | **926 passed, 6 skipped, 0 failed** |
+| Coverage | **97%** (target ≥ 90%) ✅ |
 | Ruff | **PASS** — 0 errors |
-| Mypy | **PASS** — 0 issues in 45 source files |
+| Mypy | **PASS** — 0 issues in 46 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
 
 ---
@@ -62,7 +62,7 @@
 | `promptune/context/sanitizer.py` | 35 | 2 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 56 | 4 | 93% | ✅ | |
-| `promptune/daemon/daemon.py` | 184 | 1 | 99% | ✅ | Was 83% |
+| `promptune/daemon/daemon.py` | 175 | 1 | 99% | ✅ | Clipboard delivery failure handling |
 | `promptune/daemon/hotkey.py` | 61 | 0 | 100% | ✅ | Was 69% |
 | `promptune/daemon/ipc.py` | 89 | 8 | 91% | ✅ | Was 82% |
 | `promptune/daemon/launchagent.py` | 22 | 0 | 100% | ✅ | |
@@ -70,8 +70,8 @@
 | `promptune/daemon/platform/__init__.py` | 35 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/base.py` | 54 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/linux_service.py` | 64 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/linux_wayland.py` | 160 | 79 | 51% | ⚠️ | Requires real Wayland — linux-only |
-| `promptune/daemon/platform/linux_x11.py` | 124 | 67 | 46% | ⚠️ | Requires real X11 — linux-only |
+| `promptune/daemon/platform/linux_wayland.py` | 255 | 11 | 96% | ✅ | Portal response/session handling hardened |
+| `promptune/daemon/platform/linux_x11.py` | 178 | 0 | 100% | ✅ | Real-display X11 tests + failure propagation |
 | `promptune/daemon/platform/macos.py` | 47 | 2 | 96% | ✅ | |
 | `promptune/daemon/prewarm.py` | 43 | 1 | 98% | ✅ | |
 | `promptune/dedup.py` | 55 | 2 | 96% | ✅ | |
@@ -97,7 +97,7 @@
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
 | `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3524** | **239** | **93%** | ✅ | Target: ≥ 90% |
+| **TOTAL** | **3273** | **91** | **97%** | ✅ | Target: ≥ 90% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -123,11 +123,8 @@
 ### 3. ~~Ruff Lint Failures (33 errors)~~ [RESOLVED]
 **Fixed:** All 33 errors resolved (auto-fix + manual E501 wraps + SIM105 rewrites).
 
-### 4. Linux Platform Coverage (P3 — known gap)
-**Severity:** Low
-**Modules:** `linux_x11.py` (46%), `linux_wayland.py` (51%)
-**Reason:** Require real X11/Wayland display servers — cannot be fully tested on macOS CI
-**Acceptable:** ≥70% target applies when Linux CI is available
+### 4. ~~Linux Platform Coverage (P3 — known gap)~~ [RESOLVED]
+**Fixed:** Mocked coverage is now `linux_x11.py` 100% and `linux_wayland.py` 96%. X11 real-display tests run under Xvfb in CI; Wayland hardware sign-off remains manual.
 
 ### 5. ~~`gate.py` Coverage Below Target~~ [RESOLVED]
 **Fixed:** `_print_gate_block` rendering tested directly (border chars, score display, multiline handling, line truncation, end-to-end via `run_gate`). Now 100%.
@@ -164,8 +161,8 @@
 | ~~P1~~ | ~~Improve `gate.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `mcp/server.py` 53% → ≥90%~~ | ✅ Done | 100% |
 | P2 | Add missing PARTIAL test scenarios | Deferred | Task #6 |
-| P3 | Improve `linux_x11.py` 46% → ≥70% | Deferred | Needs Linux CI |
-| P3 | Improve `linux_wayland.py` 51% → ≥70% | Deferred | Needs Linux CI |
+| ~~P3~~ | ~~Improve `linux_x11.py` 46% → ≥70%~~ | ✅ Done | 100% mocked + Xvfb CI |
+| ~~P3~~ | ~~Improve `linux_wayland.py` 51% → ≥70%~~ | ✅ Done | 96% mocked; hardware sign-off still manual |
 
 ---
 

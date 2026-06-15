@@ -375,16 +375,22 @@ class TestX11Clipboard:
                 check=True,
             )
 
-    def test_write_swallows_missing_xclip(self) -> None:
+    def test_write_raises_when_xclip_missing(self) -> None:
         cb = X11Clipboard(settle_ms=0)
-        with patch("subprocess.run", side_effect=FileNotFoundError):
-            cb.write("hello")  # must not raise
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError),
+            pytest.raises(RuntimeError, match="xclip failed"),
+        ):
+            cb.write("hello")
 
-    def test_write_swallows_called_process_error(self) -> None:
+    def test_write_raises_on_called_process_error(self) -> None:
         cb = X11Clipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "xclip")
-        with patch("subprocess.run", side_effect=err):
-            cb.write("hello")  # must not raise
+        with (
+            patch("subprocess.run", side_effect=err),
+            pytest.raises(RuntimeError, match="xclip failed"),
+        ):
+            cb.write("hello")
 
     def test_internal_write_returns_true_on_success(self) -> None:
         cb = X11Clipboard(settle_ms=0)
