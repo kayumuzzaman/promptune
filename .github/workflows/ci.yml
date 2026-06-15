@@ -42,3 +42,33 @@ jobs:
         # Linux CI: macOS-only daemon tests self-skip; -m "not linux" excludes
         # real-hardware X11/Wayland integration tests (see pyproject markers).
         run: pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-fail-under=89
+
+  linux-integration:
+    # Real-display X11 integration: runs the X11 backend against a virtual
+    # X server (Xvfb) with the actual xclip/xdotool binaries. Wayland
+    # integration needs a real session + portal/ydotool and is manual-only
+    # (see docs/MANUAL_TESTING.md), so it is not run here.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xclip xdotool wl-clipboard libxkbcommon0
+
+      - name: Install package (with Linux daemon extras)
+        run: pip install -e ".[dev,linux-daemon]"
+
+      - name: X11 integration tests (Xvfb)
+        run: xvfb-run -a pytest -m x11 -p no:cacheprovider

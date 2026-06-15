@@ -31,11 +31,19 @@ _X11_MOD_MASK: dict[str, int] = {
 
 
 def _parse_combo(combo: str) -> tuple[str, int]:
-    """Parse 'ctrl+shift+e' into (key_name, modifier_mask)."""
-    parts = [p.strip().lower() for p in combo.split("+")]
+    """Parse 'ctrl+shift+e' into (key_name, modifier_mask).
+
+    Empty or whitespace-only segments are ignored.  Modifier tokens
+    contribute to the mask; the last non-modifier token wins as the key
+    name.  A combo with no key token (e.g. ``"ctrl+shift"`` or ``""``)
+    yields an empty key name, which the callers treat as a failed grab.
+    """
     key_name = ""
     mask = 0
-    for part in parts:
+    for raw in combo.split("+"):
+        part = raw.strip().lower()
+        if not part:
+            continue
         if part in _X11_MOD_MASK:
             mask |= _X11_MOD_MASK[part]
         else:
@@ -60,15 +68,23 @@ class X11Hotkey(HotkeyBackend):
         return not self._try_grab(combo)
 
     def _try_grab(self, combo: str) -> bool:
+        d = None
         try:
             from Xlib import XK, X
             from Xlib import display as xdisplay
 
             key_name, mod_mask = _parse_combo(combo)
+            if not key_name:
+                _log.debug("X11 grab test: no key in combo %r", combo)
+                return False
+
             d = xdisplay.Display()
             root = d.screen().root
             keysym = XK.string_to_keysym(key_name)
             keycode = d.keysym_to_keycode(keysym)
+            if not keycode:
+                _log.debug("X11 grab test: unknown key %r", key_name)
+                return False
 
             error_caught = []
 
@@ -83,15 +99,19 @@ class X11Hotkey(HotkeyBackend):
             d.sync()
 
             if error_caught:
-                d.close()
                 return False
 
             root.ungrab_key(keycode, mod_mask)
-            d.close()
             return True
         except Exception:
             _log.debug("X11 grab test failed", exc_info=True)
             return False
+        finally:
+            if d is not None:
+                try:
+                    d.close()
+                except Exception:
+                    _log.debug("X11 display close failed", exc_info=True)
 
     def listen(self) -> None:
         # TODO(linux-ci): Integration test for this blocking event loop requires
@@ -100,6 +120,9 @@ class X11Hotkey(HotkeyBackend):
         #   2. Use threading to call stop() after a short delay
         #   3. Assert the loop exits cleanly without raising
         # See tests/test_daemon/test_platform/test_linux_x11_integration.py
+        d = None
+        keycode = None
+        root = None
         try:
             from Xlib import XK, X
             from Xlib import display as xdisplay
@@ -108,6 +131,9 @@ class X11Hotkey(HotkeyBackend):
             root = d.screen().root
             keysym = XK.string_to_keysym(self._key_name)
             keycode = d.keysym_to_keycode(keysym)
+            if not keycode:
+                _log.error("X11 event loop: unknown key %r", self._key_name)
+                return
 
             root.grab_key(
                 keycode, self._mod_mask, True,
@@ -121,11 +147,19 @@ class X11Hotkey(HotkeyBackend):
                         self._callback()
                 else:
                     time.sleep(0.05)
-
-            root.ungrab_key(keycode, self._mod_mask)
-            d.close()
         except Exception:
             _log.error("X11 event loop failed", exc_info=True)
+        finally:
+            if root is not None and keycode:
+                try:
+                    root.ungrab_key(keycode, self._mod_mask)
+                except Exception:
+                    _log.debug("X11 ungrab_key failed", exc_info=True)
+            if d is not None:
+                try:
+                    d.close()
+                except Exception:
+                    _log.debug("X11 display close failed", exc_info=True)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -150,28 +184,68 @@ class X11Clipboard(ClipboardBackend):
             return None
 
     def write(self, text: str) -> None:
-        subprocess.run(
-            ["xclip", "-selection", "clipboard"],
-            input=text,
-            text=True,
-            check=True,
-        )
+        """Write *text* to the clipboard.
+
+        Never raises: if xclip is missing or fails it logs an error so the
+        daemon survives a broken environment.
+        """
+        self._write(text)
+
+    def _write(self, text: str) -> bool:
+        """Write to the clipboard, returning True on success."""
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=text,
+                text=True,
+                check=True,
+            )
+            return True
+        except FileNotFoundError:
+            _log.error("xclip not found — cannot write clipboard")
+            return False
+        except Exception:
+            _log.error("xclip write failed", exc_info=True)
+            return False
 
     def copy_selection(self) -> str | None:
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+c"],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "ctrl+c"],
+                check=True,
+            )
+        except FileNotFoundError:
+            _log.error("xdotool not found — cannot simulate copy")
+            return None
+        except Exception:
+            _log.error("xdotool copy failed", exc_info=True)
+            return None
         time.sleep(self._settle_ms / 1000.0)
         return self.read()
 
     def paste_result(self, text: str) -> None:
-        self.write(text)
+        # Put the text on the clipboard first so it is never lost even if
+        # the paste keystroke cannot be simulated.
+        if not self._write(text):
+            _log.error("Could not place result on clipboard; paste aborted")
+            return
         time.sleep(self._settle_ms / 1000.0)
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+                check=True,
+            )
+        except FileNotFoundError:
+            _log.warning(
+                "xdotool not found — result is on the clipboard, "
+                "paste it manually"
+            )
+        except Exception:
+            _log.warning(
+                "xdotool paste failed — result is on the clipboard, "
+                "paste it manually",
+                exc_info=True,
+            )
 
 
 class X11Notify(NotifyBackend):
@@ -205,19 +279,23 @@ class X11ActiveWindow(ActiveWindowBackend):
         from Xlib import display as xdisplay
 
         d = xdisplay.Display()
-        root = d.screen().root
-        net_active = d.intern_atom("_NET_ACTIVE_WINDOW")
-        response = root.get_full_property(net_active, 0)
+        try:
+            root = d.screen().root
+            net_active = d.intern_atom("_NET_ACTIVE_WINDOW")
+            response = root.get_full_property(net_active, 0)
 
-        if response is None or not response.value:
-            d.close()
+            if response is None or not response.value:
+                return ""
+
+            window_id = response.value[0]
+            window = d.create_resource_object("window", window_id)
+            wm_class = window.get_wm_class()
+
+            if wm_class:
+                return str(wm_class[1])
             return ""
-
-        window_id = response.value[0]
-        window = d.create_resource_object("window", window_id)
-        wm_class = window.get_wm_class()
-        d.close()
-
-        if wm_class:
-            return str(wm_class[1])
-        return ""
+        finally:
+            try:
+                d.close()
+            except Exception:
+                _log.debug("X11 display close failed", exc_info=True)

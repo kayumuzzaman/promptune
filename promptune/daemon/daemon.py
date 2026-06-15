@@ -184,21 +184,35 @@ def _on_hotkey(
 
         app_after = platform.active_window.get_frontmost_app()
 
-        if app_after == app_before:
-            platform.clipboard.paste_result(result.enhanced)
-            delta = result.score_after.total - result.score_before.total
-            sign = "+" if delta >= 0 else ""
+        # Clipboard delivery can fail when system tools are missing
+        # (xclip/xdotool, wl-clipboard/ydotool). Backends signal this by
+        # raising; catch it here so the hotkey thread never dies silently
+        # and the user always gets feedback.
+        try:
+            if app_after == app_before:
+                platform.clipboard.paste_result(result.enhanced)
+                delta = result.score_after.total - result.score_before.total
+                sign = "+" if delta >= 0 else ""
+                platform.notify.send(
+                    "Promptune",
+                    f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
+                )
+            else:
+                platform.clipboard.write(result.enhanced)
+                platform.notify.send(
+                    "Promptune",
+                    "Enhanced text in clipboard \u2014 paste manually.",
+                    sound=False,
+                )
+        except Exception:
+            _log.exception("Failed to deliver enhanced text")
             platform.notify.send(
                 "Promptune",
-                f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
-            )
-        else:
-            platform.clipboard.write(result.enhanced)
-            platform.notify.send(
-                "Promptune",
-                "Enhanced text in clipboard \u2014 paste manually.",
+                "Enhancement ready but clipboard/paste failed \u2014 check "
+                "clipboard tools (xclip/wl-clipboard) are installed.",
                 sound=False,
             )
+            return
 
         with state.lock:
             state.enhancement_count += 1

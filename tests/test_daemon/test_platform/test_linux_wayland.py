@@ -1,6 +1,9 @@
 """Tests for Linux Wayland platform backend.
 
-All tests in this file run on macOS via mocked subprocess / dbus-next / evdev calls.
+All tests in this file run on macOS via mocked subprocess / dbus-next / evdev
+calls. The real portal, evdev, ydotool and wl-clipboard code paths cannot run
+without Wayland hardware, so they are exercised here with mocks injected via
+``sys.modules`` and ``unittest.mock``.
 
 TODO(linux-ci): On a real Linux Wayland machine, add an integration test module
   tests/test_daemon/test_platform/test_linux_wayland_integration.py that:
@@ -13,8 +16,13 @@ TODO(linux-ci): On a real Linux Wayland machine, add an integration test module
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
+import sys
+import types
 from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 from promptune.daemon.platform.base import (
     ActiveWindowBackend,
@@ -29,6 +37,42 @@ from promptune.daemon.platform.linux_wayland import (
     WaylandNotify,
 )
 
+# ---------------------------------------------------------------------------
+# Fake module helpers (dbus_next / evdev are not installed on macOS)
+# ---------------------------------------------------------------------------
+
+
+class _FakeVariant:
+    """Stand-in for dbus_next.Variant so option construction works in tests."""
+
+    def __init__(self, signature: str, value: object) -> None:
+        self.signature = signature
+        self.value = value
+
+    def __eq__(self, other: object) -> bool:  # pragma: no cover - convenience
+        return (
+            isinstance(other, _FakeVariant)
+            and self.signature == other.signature
+            and self.value == other.value
+        )
+
+
+def _install_fake_dbus(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inject minimal fake ``dbus_next`` + ``dbus_next.aio`` modules."""
+    dbus_mod = types.ModuleType("dbus_next")
+    dbus_mod.Variant = _FakeVariant  # type: ignore[attr-defined]
+    aio_mod = types.ModuleType("dbus_next.aio")
+    aio_mod.MessageBus = MagicMock(name="MessageBus")  # type: ignore[attr-defined]
+    dbus_mod.aio = aio_mod  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "dbus_next", dbus_mod)
+    monkeypatch.setitem(sys.modules, "dbus_next.aio", aio_mod)
+    return aio_mod
+
+
+# ---------------------------------------------------------------------------
+# WaylandHotkey
+# ---------------------------------------------------------------------------
+
 
 class TestWaylandHotkey:
     def test_implements_interface(self) -> None:
@@ -42,6 +86,432 @@ class TestWaylandHotkey:
     def test_check_conflict_returns_false(self) -> None:
         hk = WaylandHotkey()
         assert hk.check_conflict("ctrl+shift+e") is False
+
+    def test_register_stores_combo_and_callback(self) -> None:
+        hk = WaylandHotkey()
+        cb = MagicMock()
+        hk.register("ctrl+shift+e", cb)
+        assert hk._combo == "ctrl+shift+e"
+        assert hk._callback is cb
+
+    def test_portal_session_handle_path(self) -> None:
+        hk = WaylandHotkey()
+        path = hk._portal_session_handle("promptune_123")
+        assert path == (
+            "/org/freedesktop/portal/desktop/session/promptune_123"
+        )
+
+    def test_portal_variant_wraps_value(self, monkeypatch) -> None:
+        _install_fake_dbus(monkeypatch)
+        from promptune.daemon.platform import linux_wayland
+
+        v = linux_wayland._portal_variant("s", "hello")
+        assert isinstance(v, _FakeVariant)
+        assert v.signature == "s"
+        assert v.value == "hello"
+
+    # -- listen() fallback ordering --------------------------------------
+
+    def test_listen_uses_portal_first(self) -> None:
+        hk = WaylandHotkey()
+        with (
+            patch.object(hk, "_listen_portal") as portal,
+            patch.object(hk, "_listen_evdev") as evdev,
+        ):
+            hk.listen()
+            portal.assert_called_once()
+            evdev.assert_not_called()
+
+    def test_listen_falls_back_to_evdev_on_portal_failure(self) -> None:
+        hk = WaylandHotkey()
+        with (
+            patch.object(hk, "_listen_portal", side_effect=RuntimeError("no portal")),
+            patch.object(hk, "_listen_evdev") as evdev,
+        ):
+            hk.listen()
+            evdev.assert_called_once()
+
+    def test_listen_logs_when_both_backends_fail(self, caplog) -> None:
+        hk = WaylandHotkey()
+        with (
+            patch.object(hk, "_listen_portal", side_effect=RuntimeError("p")),
+            patch.object(hk, "_listen_evdev", side_effect=RuntimeError("e")),
+            caplog.at_level("ERROR"),
+        ):
+            hk.listen()  # must not raise
+        assert any("Both portal and evdev" in r.message for r in caplog.records)
+
+    # -- portal loop (mocked dbus_next) ----------------------------------
+
+    def test_listen_portal_success_path(self, monkeypatch) -> None:
+        aio_mod = _install_fake_dbus(monkeypatch)
+
+        shortcuts = MagicMock(name="shortcuts")
+
+        async def _create_session(options):
+            # session_handle_token must be passed so we can predict the path
+            assert "session_handle_token" in options
+            assert "handle_token" in options
+            return "/req/create"
+
+        async def _bind(session_handle, shortcuts_arg, parent, options):
+            return "/req/bind"
+
+        shortcuts.call_create_session = _create_session
+        shortcuts.call_bind_shortcuts = _bind
+
+        proxy = MagicMock(name="proxy")
+        proxy.get_interface.return_value = shortcuts
+
+        bus = MagicMock(name="bus")
+
+        async def _connect():
+            return bus
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock(name="introspection")
+
+        bus.connect = MagicMock(side_effect=lambda: _connect())
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = proxy
+
+        # MessageBus() -> object whose connect() is awaitable
+        msgbus_instance = MagicMock()
+        msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
+        aio_mod.MessageBus.return_value = msgbus_instance
+
+        user_cb = MagicMock()
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", user_cb)
+        # Pre-set stop so the while-loop exits immediately after setup.
+        hk.stop()
+
+        async def _ok(*args, **kwargs):
+            return True
+
+        with patch.object(hk, "_await_portal_response", side_effect=_ok):
+            hk._listen_portal()
+
+        # Activated handler was registered and bus disconnected cleanly.
+        shortcuts.on_activated.assert_called_once()
+        bus.disconnect.assert_called_once()
+
+        # Drive the registered Activated handler -> user callback fires.
+        on_activated = shortcuts.on_activated.call_args[0][0]
+        on_activated("/session", "promptune-enhance", 123, {})
+        user_cb.assert_called_once()
+
+    def test_listen_portal_raises_when_create_session_denied(
+        self, monkeypatch
+    ) -> None:
+        aio_mod = _install_fake_dbus(monkeypatch)
+
+        shortcuts = MagicMock(name="shortcuts")
+
+        async def _create_session(options):
+            return "/req/create"
+
+        shortcuts.call_create_session = _create_session
+
+        proxy = MagicMock(name="proxy")
+        proxy.get_interface.return_value = shortcuts
+
+        bus = MagicMock(name="bus")
+
+        async def _connect():
+            return bus
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock()
+
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = proxy
+
+        msgbus_instance = MagicMock()
+        msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
+        aio_mod.MessageBus.return_value = msgbus_instance
+
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", MagicMock())
+
+        async def _denied(*args, **kwargs):
+            return False
+
+        with (
+            patch.object(hk, "_await_portal_response", side_effect=_denied),
+            pytest.raises(RuntimeError, match="denied or timed out"),
+        ):
+            hk._listen_portal()
+
+    def test_await_portal_response_fires_on_success(self) -> None:
+        hk = WaylandHotkey()
+        request = MagicMock(name="request")
+        captured: list = []
+
+        def _on_response(cb):
+            captured.append(cb)
+
+        request.on_response = _on_response
+
+        req_proxy = MagicMock()
+        req_proxy.get_interface.return_value = request
+
+        bus = MagicMock()
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock()
+
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = req_proxy
+
+        async def _run() -> bool:
+            # Fire the response callback shortly after the coroutine awaits.
+            task = asyncio.ensure_future(
+                hk._await_portal_response(bus, MagicMock(), "/req/x")
+            )
+            await asyncio.sleep(0)
+            captured[0](0, {})  # response code 0 == success
+            return await task
+
+        assert asyncio.run(_run()) is True
+
+    def test_await_portal_response_timeout_returns_false(self) -> None:
+        hk = WaylandHotkey(portal_timeout=0.01)
+        request = MagicMock(name="request")
+        request.on_response = MagicMock()  # never invoked -> timeout
+
+        req_proxy = MagicMock()
+        req_proxy.get_interface.return_value = request
+        bus = MagicMock()
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock()
+
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = req_proxy
+
+        result = asyncio.run(
+            hk._await_portal_response(bus, MagicMock(), "/req/x")
+        )
+        assert result is False
+
+    def test_await_portal_response_nonzero_code_returns_false(self) -> None:
+        hk = WaylandHotkey()
+        request = MagicMock(name="request")
+        captured: list = []
+        request.on_response = lambda cb: captured.append(cb)
+
+        req_proxy = MagicMock()
+        req_proxy.get_interface.return_value = request
+        bus = MagicMock()
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock()
+
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = req_proxy
+
+        async def _run() -> bool:
+            task = asyncio.ensure_future(
+                hk._await_portal_response(bus, MagicMock(), "/req/x")
+            )
+            await asyncio.sleep(0)
+            captured[0](1, {})  # response code 1 == cancelled/denied
+            return await task
+
+        assert asyncio.run(_run()) is False
+
+    # -- evdev combo parsing ---------------------------------------------
+
+    def _fake_ecodes(self) -> object:
+        ec = types.SimpleNamespace()
+        ec.EV_KEY = 1
+        ec.KEY_LEFTCTRL = 29
+        ec.KEY_RIGHTCTRL = 97
+        ec.KEY_LEFTSHIFT = 42
+        ec.KEY_RIGHTSHIFT = 54
+        ec.KEY_LEFTALT = 56
+        ec.KEY_RIGHTALT = 100
+        ec.KEY_LEFTMETA = 125
+        ec.KEY_RIGHTMETA = 126
+        ec.KEY_E = 18
+        return ec
+
+    def test_parse_evdev_combo_basic(self) -> None:
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", MagicMock())
+        main_key, mod_groups = hk._parse_evdev_combo(self._fake_ecodes())
+        assert main_key == 18  # KEY_E
+        # ctrl group contains both left and right variants
+        assert {29, 97} in mod_groups
+        assert {42, 54} in mod_groups
+
+    def test_parse_evdev_combo_super_and_alt(self) -> None:
+        hk = WaylandHotkey()
+        hk.register("super+alt+e", MagicMock())
+        main_key, mod_groups = hk._parse_evdev_combo(self._fake_ecodes())
+        assert main_key == 18
+        assert {125, 126} in mod_groups
+        assert {56, 100} in mod_groups
+
+    def test_parse_evdev_combo_no_modifiers(self) -> None:
+        hk = WaylandHotkey()
+        hk.register("e", MagicMock())
+        main_key, mod_groups = hk._parse_evdev_combo(self._fake_ecodes())
+        assert main_key == 18
+        assert mod_groups == []
+
+    def test_parse_evdev_combo_unmappable_key_raises(self) -> None:
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+nonsense", MagicMock())
+        with pytest.raises(ValueError, match="Cannot map key"):
+            hk._parse_evdev_combo(self._fake_ecodes())
+
+    def test_parse_evdev_combo_ignores_empty_parts(self) -> None:
+        hk = WaylandHotkey()
+        hk.register("ctrl++e", MagicMock())
+        main_key, mod_groups = hk._parse_evdev_combo(self._fake_ecodes())
+        assert main_key == 18
+        assert {29, 97} in mod_groups
+
+    # -- evdev listen loop (mocked evdev module) -------------------------
+
+    def _install_fake_evdev(
+        self, monkeypatch: pytest.MonkeyPatch, *, keyboards
+    ) -> None:
+        ec = self._fake_ecodes()
+
+        def _categorize(event):
+            return event
+
+        evdev_mod = types.ModuleType("evdev")
+        evdev_mod.InputDevice = lambda path: path  # type: ignore[attr-defined]
+        evdev_mod.categorize = _categorize  # type: ignore[attr-defined]
+        evdev_mod.ecodes = ec  # type: ignore[attr-defined]
+        evdev_mod.list_devices = lambda: keyboards  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "evdev", evdev_mod)
+
+    def test_listen_evdev_no_keyboards_raises(self, monkeypatch) -> None:
+        self._install_fake_evdev(monkeypatch, keyboards=[])
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", MagicMock())
+        with pytest.raises(RuntimeError, match="No keyboard"):
+            hk._listen_evdev()
+
+    def test_listen_evdev_fires_callback_on_combo(self, monkeypatch) -> None:
+        ec = self._fake_ecodes()
+
+        class _Ev:
+            key_down = 1
+            key_up = 0
+
+            def __init__(self, scancode, keystate, etype=ec.EV_KEY) -> None:
+                self.scancode = scancode
+                self.keystate = keystate
+                self.type = etype
+
+        class _Dev:
+            def __init__(self, events) -> None:
+                self._events = events
+
+            def capabilities(self):
+                return {ec.EV_KEY: []}
+
+            def read(self):
+                return list(self._events)
+
+        cb = MagicMock()
+        hk = WaylandHotkey()
+        hk.register("ctrl+e", cb)
+
+        # press ctrl down, then e down -> should fire once
+        events = [
+            _Ev(ec.KEY_LEFTCTRL, _Ev.key_down),
+            _Ev(ec.KEY_E, _Ev.key_down),
+            # an unrelated event after fire (pressed was cleared)
+            _Ev(ec.KEY_E, _Ev.key_up),
+        ]
+        dev = _Dev(events)
+
+        keyboard_objs = [dev]
+
+        ec_mod = types.SimpleNamespace(**vars(ec))
+        evdev_mod = types.ModuleType("evdev")
+        evdev_mod.InputDevice = lambda path: path  # type: ignore[attr-defined]
+        evdev_mod.categorize = lambda e: e  # type: ignore[attr-defined]
+        evdev_mod.ecodes = ec_mod  # type: ignore[attr-defined]
+        evdev_mod.list_devices = lambda: keyboard_objs  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "evdev", evdev_mod)
+
+        # select.select returns our device as readable on first poll, then we
+        # stop the loop so it exits.
+        call_count = {"n": 0}
+
+        def _fake_select(rlist, wlist, xlist, timeout):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return (rlist, [], [])
+            hk.stop()
+            return ([], [], [])
+
+        fake_select_mod = types.ModuleType("select")
+        fake_select_mod.select = _fake_select  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "select", fake_select_mod)
+
+        hk._listen_evdev()
+        cb.assert_called_once()
+
+    def test_listen_evdev_ignores_non_key_events(self, monkeypatch) -> None:
+        ec = self._fake_ecodes()
+
+        class _Ev:
+            key_down = 1
+            key_up = 0
+
+            def __init__(self, scancode, keystate, etype) -> None:
+                self.scancode = scancode
+                self.keystate = keystate
+                self.type = etype
+
+        class _Dev:
+            def capabilities(self):
+                return {ec.EV_KEY: []}
+
+            def read(self):
+                # type 2 == EV_REL (not EV_KEY) -> ignored
+                return [_Ev(ec.KEY_E, _Ev.key_down, 2)]
+
+        cb = MagicMock()
+        hk = WaylandHotkey()
+        hk.register("e", cb)
+
+        evdev_mod = types.ModuleType("evdev")
+        evdev_mod.InputDevice = lambda path: path  # type: ignore[attr-defined]
+        evdev_mod.categorize = lambda e: e  # type: ignore[attr-defined]
+        evdev_mod.ecodes = types.SimpleNamespace(**vars(ec))  # type: ignore[attr-defined]
+        evdev_mod.list_devices = lambda: [_Dev()]  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "evdev", evdev_mod)
+
+        n = {"x": 0}
+
+        def _fake_select(rlist, wlist, xlist, timeout):
+            n["x"] += 1
+            if n["x"] == 1:
+                return (rlist, [], [])
+            hk.stop()
+            return ([], [], [])
+
+        fake_select_mod = types.ModuleType("select")
+        fake_select_mod.select = _fake_select  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "select", fake_select_mod)
+
+        hk._listen_evdev()
+        cb.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# WaylandClipboard
+# ---------------------------------------------------------------------------
 
 
 class TestWaylandClipboard:
@@ -70,6 +540,11 @@ class TestWaylandClipboard:
             result = cb.read()
             assert result is None
 
+    def test_read_returns_none_when_binary_missing(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            assert cb.read() is None
+
     def test_write_pipes_to_wl_copy(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         with patch("subprocess.run") as mock_run:
@@ -80,6 +555,23 @@ class TestWaylandClipboard:
                 text=True,
                 check=True,
             )
+
+    def test_write_raises_clear_error_when_binary_missing(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError),
+            pytest.raises(RuntimeError, match="wl-clipboard"),
+        ):
+            cb.write("hello")
+
+    def test_write_raises_clear_error_on_called_process_error(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        err = subprocess.CalledProcessError(1, "wl-copy")
+        with (
+            patch("subprocess.run", side_effect=err),
+            pytest.raises(RuntimeError, match="wl-copy failed"),
+        ):
+            cb.write("hello")
 
     def test_copy_selection_uses_ydotool(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
@@ -94,6 +586,21 @@ class TestWaylandClipboard:
             )
             assert result == "selected"
 
+    def test_copy_selection_returns_none_when_ydotool_missing(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError),
+            patch.object(cb, "read") as mock_read,
+        ):
+            assert cb.copy_selection() is None
+            mock_read.assert_not_called()
+
+    def test_copy_selection_returns_none_on_ydotool_error(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        err = subprocess.CalledProcessError(1, "ydotool")
+        with patch("subprocess.run", side_effect=err):
+            assert cb.copy_selection() is None
+
     def test_paste_result_uses_ydotool(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         with (
@@ -107,6 +614,35 @@ class TestWaylandClipboard:
                 check=True,
             )
 
+    def test_paste_result_propagates_write_failure(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch.object(
+                cb, "write", side_effect=RuntimeError("wl-copy not found")
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            cb.paste_result("enhanced")
+
+    def test_paste_result_degrades_when_ydotool_missing(self) -> None:
+        """Text stays on the clipboard (write succeeded) -> no raise."""
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch.object(cb, "write") as mock_write,
+            patch("subprocess.run", side_effect=FileNotFoundError),
+        ):
+            cb.paste_result("enhanced")  # must not raise
+            mock_write.assert_called_once_with("enhanced")
+
+    def test_paste_result_degrades_on_ydotool_error(self) -> None:
+        cb = WaylandClipboard(settle_ms=0)
+        err = subprocess.CalledProcessError(1, "ydotool")
+        with (
+            patch.object(cb, "write"),
+            patch("subprocess.run", side_effect=err),
+        ):
+            cb.paste_result("enhanced")  # must not raise
+
     def test_read_strips_null_bytes(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         with patch("subprocess.run") as mock_run:
@@ -115,6 +651,11 @@ class TestWaylandClipboard:
             )
             result = cb.read()
             assert result == "helloworld"
+
+
+# ---------------------------------------------------------------------------
+# WaylandNotify
+# ---------------------------------------------------------------------------
 
 
 class TestWaylandNotify:
@@ -140,30 +681,152 @@ class TestWaylandNotify:
             assert len(sent_body) <= 103
             assert sent_body.endswith("...")
 
+    def test_send_degrades_when_binary_missing(self) -> None:
+        n = WaylandNotify()
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            n.send("T", "B")  # must not raise
+
+    def test_send_degrades_on_other_error(self) -> None:
+        n = WaylandNotify()
+        with patch("subprocess.run", side_effect=OSError("boom")):
+            n.send("T", "B")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# WaylandActiveWindow
+# ---------------------------------------------------------------------------
+
 
 class TestWaylandActiveWindow:
     def test_implements_interface(self) -> None:
         assert issubclass(WaylandActiveWindow, ActiveWindowBackend)
 
-    def test_gnome_detection(self) -> None:
+    def test_defaults_desktop_from_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
+        aw = WaylandActiveWindow()
+        assert aw._desktop == "GNOME"
+
+    # -- GNOME ------------------------------------------------------------
+
+    def test_gnome_detection_plain_json(self) -> None:
         aw = WaylandActiveWindow(desktop="GNOME")
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 stdout='{"success": true, "value": "firefox"}',
                 returncode=0,
             )
-            result = aw.get_frontmost_app()
-            assert result == "firefox"
+            assert aw.get_frontmost_app() == "firefox"
 
-    def test_sway_detection(self) -> None:
+    def test_gnome_detection_gdbus_tuple_format(self) -> None:
+        aw = WaylandActiveWindow(desktop="GNOME")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout="(true, 'firefox')",
+                returncode=0,
+            )
+            assert aw.get_frontmost_app() == "firefox"
+
+    def test_gnome_eval_disabled_returns_empty(self) -> None:
+        """GNOME 41+ returns (false, '') when Shell.Eval is locked down."""
+        aw = WaylandActiveWindow(desktop="GNOME")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="(false, '')", returncode=0)
+            assert aw.get_frontmost_app() == ""
+
+    def test_gnome_unparseable_output_returns_empty(self) -> None:
+        aw = WaylandActiveWindow(desktop="GNOME")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="garbage!!", returncode=0)
+            assert aw.get_frontmost_app() == ""
+
+    def test_gnome_pop_and_ubuntu_route_to_gnome(self) -> None:
+        for desktop in ("pop:GNOME", "ubuntu:GNOME"):
+            aw = WaylandActiveWindow(desktop=desktop)
+            with patch.object(
+                aw, "_gnome_active_window", return_value="x"
+            ) as g:
+                aw.get_frontmost_app()
+                g.assert_called_once()
+
+    # -- KDE --------------------------------------------------------------
+
+    def test_kde_detection(self) -> None:
+        aw = WaylandActiveWindow(desktop="KDE")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout="  konsole \n", returncode=0
+            )
+            result = aw.get_frontmost_app()
+            assert result == "konsole"
+            assert mock_run.call_args[0][0][0] == "qdbus"
+
+    def test_plasma_routes_to_kde(self) -> None:
+        aw = WaylandActiveWindow(desktop="plasma")
+        with patch.object(aw, "_kde_active_window", return_value="k") as k:
+            aw.get_frontmost_app()
+            k.assert_called_once()
+
+    # -- sway -------------------------------------------------------------
+
+    def test_sway_detection_top_level_focused(self) -> None:
         aw = WaylandActiveWindow(desktop="sway")
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 stdout='{"nodes":[{"focused":true,"app_id":"kitty"}]}',
                 returncode=0,
             )
-            result = aw.get_frontmost_app()
-            assert "kitty" in result or result == ""
+            assert aw.get_frontmost_app() == "kitty"
+
+    def test_sway_detection_nested_focused_node(self) -> None:
+        aw = WaylandActiveWindow(desktop="sway")
+        tree = (
+            '{"focused":false,"nodes":['
+            '{"focused":false,"nodes":['
+            '{"focused":true,"app_id":"firefox"}]}]}'
+        )
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout=tree, returncode=0)
+            assert aw.get_frontmost_app() == "firefox"
+
+    def test_sway_focused_in_floating_node(self) -> None:
+        aw = WaylandActiveWindow(desktop="sway")
+        tree = (
+            '{"focused":false,"nodes":[],"floating_nodes":['
+            '{"focused":true,"app_id":"mpv"}]}'
+        )
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout=tree, returncode=0)
+            assert aw.get_frontmost_app() == "mpv"
+
+    def test_sway_falls_back_to_name_when_no_app_id(self) -> None:
+        aw = WaylandActiveWindow(desktop="sway")
+        tree = '{"focused":true,"name":"X-term"}'
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout=tree, returncode=0)
+            assert aw.get_frontmost_app() == "X-term"
+
+    def test_sway_none_node_lists_do_not_crash(self) -> None:
+        aw = WaylandActiveWindow(desktop="sway")
+        # nodes/floating_nodes explicitly null
+        tree = '{"focused":false,"nodes":null,"floating_nodes":null}'
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout=tree, returncode=0)
+            assert aw.get_frontmost_app() == ""
+
+    def test_sway_no_focused_node_returns_empty(self) -> None:
+        aw = WaylandActiveWindow(desktop="sway")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout='{"nodes":[{"focused":false,"app_id":"x"}]}',
+                returncode=0,
+            )
+            assert aw.get_frontmost_app() == ""
+
+    # -- misc -------------------------------------------------------------
+
+    def test_unknown_desktop_returns_empty(self) -> None:
+        aw = WaylandActiveWindow(desktop="i3")
+        assert aw.get_frontmost_app() == ""
 
     def test_returns_empty_on_error(self) -> None:
         aw = WaylandActiveWindow(desktop="unknown")

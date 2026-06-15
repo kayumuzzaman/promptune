@@ -70,6 +70,8 @@ testpaths = ["tests"]
 addopts = "-v --tb=short"
 markers = [
     "linux: integration tests that require a real Linux environment with X11/Wayland and system tools (xclip, xdotool, wl-clipboard, ydotool, dbus, evdev). Skip on macOS with: pytest -m 'not linux'",
+    "x11: X11 integration tests runnable under Xvfb (virtual display) in CI. Also carry the 'linux' marker. Select with: pytest -m x11",
+    "wayland: Wayland integration tests requiring a real Wayland session + portal/ydotool. Manual/hardware only (not in CI). Also carry the 'linux' marker. Select with: pytest -m wayland",
 ]
 
 [tool.coverage.run]
