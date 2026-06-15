@@ -60,11 +60,18 @@ class _FakeVariant:
 
 class _FakeMessageType:
     SIGNAL = "signal"
+    METHOD_RETURN = "method_return"
+
+
+class _FakeMessage:
+    def __init__(self, **kwargs: object) -> None:
+        self.__dict__.update(kwargs)
 
 
 def _install_fake_dbus(monkeypatch: pytest.MonkeyPatch) -> None:
     """Inject minimal fake ``dbus_next`` + ``dbus_next.aio`` modules."""
     dbus_mod = types.ModuleType("dbus_next")
+    dbus_mod.Message = _FakeMessage  # type: ignore[attr-defined]
     dbus_mod.Variant = _FakeVariant  # type: ignore[attr-defined]
     aio_mod = types.ModuleType("dbus_next.aio")
     aio_mod.MessageBus = MagicMock(name="MessageBus")  # type: ignore[attr-defined]
@@ -75,6 +82,10 @@ def _install_fake_dbus(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "dbus_next.aio", aio_mod)
     monkeypatch.setitem(sys.modules, "dbus_next.constants", constants_mod)
     return aio_mod
+
+
+async def _method_return_response() -> object:
+    return types.SimpleNamespace(message_type=_FakeMessageType.METHOD_RETURN)
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +203,9 @@ class TestWaylandHotkey:
         bus.connect = MagicMock(side_effect=lambda: _connect())
         bus.introspect = MagicMock(side_effect=_introspect)
         bus.get_proxy_object.return_value = proxy
+        bus.call = MagicMock(
+            side_effect=lambda message: _method_return_response()
+        )
 
         # MessageBus() -> object whose connect() is awaitable
         msgbus_instance = MagicMock()
@@ -209,7 +223,7 @@ class TestWaylandHotkey:
             events.append(f"await:{request_path}")
             if "/promptune_create_" in request_path:
                 return {"session_handle": expected_session_handle}
-            return {}
+            return {"shortcuts": [("promptune-enhance", {})]}
 
         original_watch = hk._watch_portal_response
 
@@ -277,6 +291,9 @@ class TestWaylandHotkey:
         bus.introspect = MagicMock(side_effect=_introspect)
         bus.get_proxy_object.return_value = proxy
         bus.unique_name = ":1.42"
+        bus.call = MagicMock(
+            side_effect=lambda message: _method_return_response()
+        )
 
         msgbus_instance = MagicMock()
         msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
@@ -328,6 +345,9 @@ class TestWaylandHotkey:
 
         bus.introspect = MagicMock(side_effect=_introspect)
         bus.get_proxy_object.return_value = proxy
+        bus.call = MagicMock(
+            side_effect=lambda message: _method_return_response()
+        )
 
         msgbus_instance = MagicMock()
         msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
@@ -335,6 +355,7 @@ class TestWaylandHotkey:
 
         hk = WaylandHotkey()
         hk.register("ctrl+shift+e", MagicMock())
+        hk.stop()
 
         async def _response(*args, **kwargs):
             request_path = str(args[-1])
@@ -347,6 +368,95 @@ class TestWaylandHotkey:
             pytest.raises(RuntimeError, match="BindShortcuts was denied"),
         ):
             hk._listen_portal()
+
+    @pytest.mark.parametrize(
+        "bound_shortcuts",
+        [[], [("other-shortcut", {})]],
+    )
+    def test_listen_portal_raises_when_promptune_shortcut_unbound(
+        self, monkeypatch, bound_shortcuts
+    ) -> None:
+        aio_mod = _install_fake_dbus(monkeypatch)
+
+        shortcuts = MagicMock(name="shortcuts")
+        session_handle = (
+            "/org/freedesktop/portal/desktop/session/1_42/promptune_session"
+        )
+
+        async def _create_session(options):
+            return "/req/create"
+
+        async def _bind(session_handle_arg, shortcuts_arg, parent, options):
+            assert session_handle_arg == session_handle
+            return "/req/bind"
+
+        shortcuts.call_create_session = _create_session
+        shortcuts.call_bind_shortcuts = _bind
+
+        proxy = MagicMock(name="proxy")
+        proxy.get_interface.return_value = shortcuts
+
+        bus = MagicMock(name="bus")
+        bus.unique_name = ":1.42"
+
+        async def _connect():
+            return bus
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock()
+
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = proxy
+        bus.call = MagicMock(
+            side_effect=lambda message: _method_return_response()
+        )
+
+        msgbus_instance = MagicMock()
+        msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
+        aio_mod.MessageBus.return_value = msgbus_instance
+
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", MagicMock())
+        hk.stop()
+
+        async def _response(*args, **kwargs):
+            request_path = str(args[-1])
+            if "/promptune_create_" in request_path:
+                return {"session_handle": session_handle}
+            return {"shortcuts": bound_shortcuts}
+
+        with (
+            patch.object(hk, "_await_portal_response", side_effect=_response),
+            pytest.raises(RuntimeError, match="promptune-enhance was not bound"),
+        ):
+            hk._listen_portal()
+
+    def test_add_portal_match_subscribes_request_response(
+        self, monkeypatch
+    ) -> None:
+        _install_fake_dbus(monkeypatch)
+        hk = WaylandHotkey()
+        bus = MagicMock()
+
+        async def _call(message):
+            return types.SimpleNamespace(
+                message_type=_FakeMessageType.METHOD_RETURN
+            )
+
+        bus.call = MagicMock(side_effect=_call)
+
+        asyncio.run(hk._add_portal_match(bus, "/req/x"))
+
+        message = bus.call.call_args.args[0]
+        assert message.destination == "org.freedesktop.DBus"
+        assert message.path == "/org/freedesktop/DBus"
+        assert message.member == "AddMatch"
+        assert message.signature == "s"
+        rule = message.body[0]
+        assert "type='signal'" in rule
+        assert "interface='org.freedesktop.portal.Request'" in rule
+        assert "member='Response'" in rule
+        assert "path='/req/x'" in rule
 
     def test_await_portal_response_fires_on_success(self, monkeypatch) -> None:
         _install_fake_dbus(monkeypatch)

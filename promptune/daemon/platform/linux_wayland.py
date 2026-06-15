@@ -134,6 +134,7 @@ class WaylandHotkey(HotkeyBackend):
             create_response = self._watch_portal_response(
                 bus, create_request_path
             )
+            await self._add_portal_match(bus, create_request_path)
 
             # CreateSession returns a Request handle, not the session handle.
             # The session only becomes valid once the portal confirms it; we
@@ -159,6 +160,7 @@ class WaylandHotkey(HotkeyBackend):
             bind_token = f"promptune_bind_{os.getpid()}"
             bind_request_path = self._portal_request_path(bus, bind_token)
             bind_response = self._watch_portal_response(bus, bind_request_path)
+            await self._add_portal_match(bus, bind_request_path)
             await shortcuts.call_bind_shortcuts(
                 session_handle,
                 [
@@ -177,6 +179,8 @@ class WaylandHotkey(HotkeyBackend):
             )
             if bind_results is None:
                 raise RuntimeError("Portal BindShortcuts was denied or timed out")
+            if not self._portal_shortcut_bound(bind_results):
+                raise RuntimeError("Portal promptune-enhance was not bound")
 
             def on_activated(
                 session: str, shortcut_id: str, timestamp: int, options: dict
@@ -195,6 +199,42 @@ class WaylandHotkey(HotkeyBackend):
 
     def _portal_response_value(self, value: object) -> object:
         return getattr(value, "value", value)
+
+    def _portal_shortcut_bound(self, results: dict[str, Any]) -> bool:
+        shortcuts = self._portal_response_value(results.get("shortcuts"))
+        if not isinstance(shortcuts, list):
+            return False
+        for shortcut in shortcuts:
+            item = self._portal_response_value(shortcut)
+            if not isinstance(item, (tuple, list)) or not item:
+                continue
+            shortcut_id = self._portal_response_value(item[0])
+            if shortcut_id == "promptune-enhance":
+                return True
+        return False
+
+    async def _add_portal_match(self, bus: object, request_path: str) -> None:
+        from dbus_next import Message  # type: ignore[import]
+        from dbus_next.constants import MessageType  # type: ignore[import]
+
+        rule = (
+            "type='signal',"
+            "sender='org.freedesktop.portal.Desktop',"
+            "interface='org.freedesktop.portal.Request',"
+            "member='Response',"
+            f"path='{request_path}'"
+        )
+        reply = await bus.call(  # type: ignore[attr-defined]
+            Message(
+                destination="org.freedesktop.DBus",
+                path="/org/freedesktop/DBus",
+                member="AddMatch",
+                signature="s",
+                body=[rule],
+            )
+        )
+        if getattr(reply, "message_type", None) != MessageType.METHOD_RETURN:
+            raise RuntimeError("Failed to add portal response match rule")
 
     def _watch_portal_response(
         self, bus: object, request_path: str

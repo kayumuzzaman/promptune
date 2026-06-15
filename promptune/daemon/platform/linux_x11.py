@@ -229,7 +229,7 @@ class X11Clipboard(ClipboardBackend):
         # the paste keystroke cannot be simulated.
         if not self._write(text):
             _log.error("Could not place result on clipboard; paste aborted")
-            return
+            raise RuntimeError("xclip failed to write clipboard")
         time.sleep(self._settle_ms / 1000.0)
         try:
             subprocess.run(

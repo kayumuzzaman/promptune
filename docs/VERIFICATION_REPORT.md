@@ -12,12 +12,13 @@
 | Date | 2026-06-15 |
 | Branch | feat/linux-daemon-hardening |
 | Python | 3.14.3 |
-| Total Tests | 932 |
-| Test Result | **926 passed, 6 skipped, 0 failed** |
+| Total Tests | 935 |
+| Test Result | **929 passed, 6 skipped, 0 failed** |
 | Coverage | **97%** (target ≥ 90%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
+| Pytest Warnings | **4** — `PytestUnhandledThreadExceptionWarning` in prewarm timer test |
 
 ---
 
@@ -70,7 +71,7 @@
 | `promptune/daemon/platform/__init__.py` | 35 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/base.py` | 54 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/linux_service.py` | 64 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/linux_wayland.py` | 255 | 11 | 96% | ✅ | Portal response/session handling hardened |
+| `promptune/daemon/platform/linux_wayland.py` | 278 | 14 | 95% | ✅ | Portal match/session/binding handling hardened |
 | `promptune/daemon/platform/linux_x11.py` | 178 | 0 | 100% | ✅ | Real-display X11 tests + failure propagation |
 | `promptune/daemon/platform/macos.py` | 47 | 2 | 96% | ✅ | |
 | `promptune/daemon/prewarm.py` | 43 | 1 | 98% | ✅ | |
@@ -97,7 +98,7 @@
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
 | `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3273** | **91** | **97%** | ✅ | Target: ≥ 90% |
+| **TOTAL** | **3296** | **94** | **97%** | ✅ | Target: ≥ 90% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -142,6 +143,13 @@
 
 **Status:** Deferred — module coverage already at target. See TaskList task #6.
 
+### 8. Prewarm timer emits thread exception warnings (P2)
+**Severity:** Medium
+**Test:** `tests/test_daemon/test_prewarm.py::TestStartPrewarmTimer::test_cancel_stops_repeating_chain`
+**Symptom:** Full suite passes but emits 4 `PytestUnhandledThreadExceptionWarning` warnings.
+**Cause:** A repeating timer can call `prewarm_ollama()` after test cancellation; the test mock leaves `httpx.HTTPStatusError` as a non-exception object in that background path.
+**Fix pointer:** Tighten timer cancellation/test cleanup or harden the mocked `httpx` exception setup.
+
 ---
 
 ## Remaining Work
@@ -161,8 +169,9 @@
 | ~~P1~~ | ~~Improve `gate.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `mcp/server.py` 53% → ≥90%~~ | ✅ Done | 100% |
 | P2 | Add missing PARTIAL test scenarios | Deferred | Task #6 |
+| P2 | Fix prewarm timer thread warning | Open | `test_cancel_stops_repeating_chain` background timer |
 | ~~P3~~ | ~~Improve `linux_x11.py` 46% → ≥70%~~ | ✅ Done | 100% mocked + Xvfb CI |
-| ~~P3~~ | ~~Improve `linux_wayland.py` 51% → ≥70%~~ | ✅ Done | 96% mocked; hardware sign-off still manual |
+| ~~P3~~ | ~~Improve `linux_wayland.py` 51% → ≥70%~~ | ✅ Done | 95% mocked; hardware sign-off still manual |
 
 ---
 

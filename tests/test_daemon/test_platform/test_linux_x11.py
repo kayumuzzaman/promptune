@@ -452,9 +452,10 @@ class TestX11Clipboard:
         with (
             patch.object(cb, "_write", return_value=False),
             patch("subprocess.run") as mock_run,
+            pytest.raises(RuntimeError, match="xclip failed"),
         ):
             cb.paste_result("enhanced")
-            mock_run.assert_not_called()  # no paste keystroke
+        mock_run.assert_not_called()  # no paste keystroke
 
     def test_paste_result_keeps_text_when_xdotool_missing(self) -> None:
         cb = X11Clipboard(settle_ms=0)
