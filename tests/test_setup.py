@@ -214,6 +214,35 @@ class TestPromptApiKey:
         default_val = call_kwargs.get("default", "")
         assert default_val == "" or default_val is None
 
+    def test_accepts_blank_key_for_free_mode(self) -> None:
+        with (
+            patch("click.prompt", return_value=""),
+            patch("click.echo"),
+        ):
+            result = _prompt_api_key("claude", "")
+        assert result == ""
+
+    def test_shows_paid_note_when_no_existing_key(self) -> None:
+        with (
+            patch("click.prompt", return_value="sk-ant-test123"),
+            patch("click.echo") as mock_echo,
+        ):
+            _prompt_api_key("claude", "")
+        text = " ".join(str(c) for c in mock_echo.call_args_list).lower()
+        assert "paid" in text
+        assert "blank" in text
+
+    def test_blank_key_confirms_free_mode(self) -> None:
+        with (
+            patch("click.prompt", return_value=""),
+            patch("click.echo") as mock_echo,
+        ):
+            _prompt_api_key("claude", "")
+        text = " ".join(str(c) for c in mock_echo.call_args_list).lower()
+        assert "free" in text
+        assert "tier 0" in text
+        assert "tier 1" in text
+
 
 class TestPromptModel:
     """Model name prompt after API key."""
@@ -652,6 +681,58 @@ class TestRunInteractiveSetup:
             result["provider"]["model_openrouter"]
             == "google/gemini-pro"
         )
+
+    def test_explains_tiers_and_cost(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "sk-ant-test123",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo") as mock_echo,
+            patch(
+                "promptune.setup.detect_tools",
+                return_value=[],
+            ),
+        ):
+            run_interactive_setup(config_path, mock_registry)
+        text = " ".join(str(c) for c in mock_echo.call_args_list).lower()
+        assert "tier 0" in text
+        assert "tier 1" in text
+        assert "tier 2" in text
+        assert "free" in text
+        assert "api key" in text
+
+    def test_completes_with_blank_key(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch(
+                "promptune.setup.detect_tools",
+                return_value=[],
+            ),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        assert result["provider"]["default"] == "claude"
+        assert result["api_keys"]["claude"] == ""
 
 
 class TestWriteConfigEdgeCases:

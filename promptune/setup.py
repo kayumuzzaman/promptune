@@ -102,6 +102,28 @@ def write_config(
     config_path.write_text("\n".join(lines) + "\n")
 
 
+def _print_tier_overview() -> None:
+    """Explain the three enhancement tiers and their cost."""
+    click.echo("  How Promptune enhances your prompts:")
+    click.echo(
+        "    Tier 0  Rule-based rewrite       FREE  · offline, no key"
+    )
+    click.echo(
+        "    Tier 1  Local LLM (Ollama, …)    FREE  · private, no key"
+    )
+    click.echo(
+        "    Tier 2  Cloud LLM (Claude/GPT)   PAID  · needs an API key"
+    )
+    click.echo()
+    click.echo(
+        "  Tiers 0 & 1 work with no API key. Tier 2 is optional —"
+    )
+    click.echo(
+        "  prompts only escalate to it when the cheaper tiers fall short."
+    )
+    click.echo()
+
+
 def _prompt_provider(
     registry: ProviderRegistry, default: str
 ) -> str:
@@ -133,21 +155,26 @@ def _prompt_api_key(
             show_default=False,
         )
     else:
-        prompt_text = f"  {provider.title()} API key"
-        while True:
-            key = click.prompt(
-                prompt_text,
-                hide_input=True,
-                default="",
-                show_default=False,
-            )
-            if key:
-                break
+        click.echo(
+            "  Tier 2 (cloud) uses a PAID API key. Leave blank to "
+            "skip it and"
+        )
+        click.echo(
+            "  use the free tiers (rules + local LLM) only."
+        )
+        prompt_text = f"  {provider.title()} API key (blank = free mode)"
+        key = click.prompt(
+            prompt_text,
+            hide_input=True,
+            default="",
+            show_default=False,
+        )
+        if not key:
             click.echo(
-                "  Error: API key is required for your "
-                "selected provider.",
-                err=True,
+                "  ✓ No API key set — free mode: Tier 0 "
+                "(rules) + Tier 1 (local LLM)."
             )
+            return ""
 
     warning = validate_key_format(provider, key)
     if warning and "required" not in warning.lower():
@@ -295,6 +322,9 @@ def run_interactive_setup(
         "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
     )
     click.echo()
+
+    # Explain tiers + cost before asking for anything
+    _print_tier_overview()
 
     # Load existing config for pre-filling
     existing = load_config(config_path=config_path)

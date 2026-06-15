@@ -156,15 +156,28 @@ Expected flow:
 - [ ] Provider prompt appears with choices and `claude` as default
 - [ ] Press Enter to accept default `claude`
 
+Before the key prompt, a tier overview is printed:
+
+```
+  How Promptune enhances your prompts:
+    Tier 0  Rule-based rewrite       FREE  · offline, no key
+    Tier 1  Local LLM (Ollama, …)    FREE  · private, no key
+    Tier 2  Cloud LLM (Claude/GPT)   PAID  · needs an API key
+```
+
+- [ ] Tier overview lists Tier 0 & 1 as FREE and Tier 2 as PAID
+
 Next prompt:
 
 ```
-  Claude API key:
+  Tier 2 (cloud) uses a PAID API key. Leave blank to skip it and
+  use the free tiers (rules + local LLM) only.
+  Claude API key (blank = free mode):
 ```
 
 - [ ] API key input is masked (hidden characters)
 - [ ] Entering a valid `sk-ant-...` key prints: `Key format looks valid.`
-- [ ] Pressing Enter with empty input prints error and re-prompts: `Error: API key is required for your selected provider.`
+- [ ] Pressing Enter with empty input accepts free mode and prints: `✓ No API key set — free mode: Tier 0 (rules) + Tier 1 (local LLM).`
 
 Next prompt:
 
