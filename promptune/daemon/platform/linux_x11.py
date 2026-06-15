@@ -215,16 +215,18 @@ class X11Clipboard(ClipboardBackend):
                 ["xdotool", "key", "--clearmodifiers", "ctrl+c"],
                 check=True,
             )
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             _log.error("xdotool not found — cannot simulate copy")
-            return None
-        except Exception:
+            raise RuntimeError(
+                "xdotool not found; install xdotool to read the selection"
+            ) from exc
+        except Exception as exc:
             _log.error("xdotool copy failed", exc_info=True)
-            return None
+            raise RuntimeError(f"xdotool copy failed: {exc}") from exc
         time.sleep(self._settle_ms / 1000.0)
         return self.read()
 
-    def paste_result(self, text: str) -> None:
+    def paste_result(self, text: str) -> bool:
         # Put the text on the clipboard first so it is never lost even if
         # the paste keystroke cannot be simulated.
         if not self._write(text):
@@ -241,12 +243,15 @@ class X11Clipboard(ClipboardBackend):
                 "xdotool not found — result is on the clipboard, "
                 "paste it manually"
             )
+            return False
         except Exception:
             _log.warning(
                 "xdotool paste failed — result is on the clipboard, "
                 "paste it manually",
                 exc_info=True,
             )
+            return False
+        return True
 
 
 class X11Notify(NotifyBackend):

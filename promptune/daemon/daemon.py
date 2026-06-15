@@ -154,7 +154,22 @@ def _on_hotkey(
     try:
         app_before = platform.active_window.get_frontmost_app()
         original_clipboard = platform.clipboard.read()
-        selected_text = platform.clipboard.copy_selection()
+
+        # copy_selection raises when the copy tool is missing/broken, and
+        # returns None/empty only for a genuinely empty selection. Keep these
+        # distinct so we don't tell the user "no text selected" when the real
+        # problem is a missing xdotool/ydotool.
+        try:
+            selected_text = platform.clipboard.copy_selection()
+        except Exception:
+            _log.exception("Copy tool failed")
+            platform.notify.send(
+                "Promptune",
+                "Couldn't read selection — copy tool (xdotool/ydotool) "
+                "missing or broken.",
+                sound=False,
+            )
+            return
 
         if not selected_text:
             platform.notify.send(
@@ -190,13 +205,23 @@ def _on_hotkey(
         # and the user always gets feedback.
         try:
             if app_after == app_before:
-                platform.clipboard.paste_result(result.enhanced)
-                delta = result.score_after.total - result.score_before.total
-                sign = "+" if delta >= 0 else ""
-                platform.notify.send(
-                    "Promptune",
-                    f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
-                )
+                injected = platform.clipboard.paste_result(result.enhanced)
+                if injected:
+                    delta = result.score_after.total - result.score_before.total
+                    sign = "+" if delta >= 0 else ""
+                    platform.notify.send(
+                        "Promptune",
+                        f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
+                    )
+                else:
+                    # Write succeeded but the paste keystroke didn't inject \u2014
+                    # the text is on the clipboard, so tell the user to paste.
+                    platform.notify.send(
+                        "Promptune",
+                        "Enhanced text on clipboard \u2014 paste manually "
+                        "(Ctrl+V).",
+                        sound=False,
+                    )
             else:
                 platform.clipboard.write(result.enhanced)
                 platform.notify.send(

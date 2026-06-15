@@ -218,6 +218,57 @@ class TestOnHotkey:
         assert "fail" in msg or "manual" in msg
         assert state.enhancement_count == 0
 
+    def test_paste_injection_failure_notifies_manual(
+        self, tmp_path: Path
+    ) -> None:
+        platform = self._make_platform()
+        # Write succeeded (text on clipboard) but the paste keystroke didn't
+        # inject -> backend returns False.
+        platform.clipboard.paste_result.return_value = False
+        state = DaemonState()
+        config = {
+            "enhancement": {"max_tier": 0},
+            "provider": {"default": "claude", "format_style": "auto"},
+            "local_llm": {"enabled": False},
+            "api_keys": {},
+            "context": {},
+            "history": {"enabled": False},
+        }
+        undo_file = tmp_path / "undo.txt"
+
+        with (
+            patch("promptune.daemon.daemon.enhance") as mock_enhance,
+            patch("promptune.daemon.daemon.UNDO_FILE", undo_file),
+        ):
+            mock_result = MagicMock()
+            mock_result.enhanced = "enhanced text"
+            mock_result.score_before.total = 40
+            mock_result.score_after.total = 75
+            mock_enhance.return_value = mock_result
+
+            _on_hotkey(state, config, platform)
+
+        msg = platform.notify.send.call_args[0][1].lower()
+        assert "paste" in msg and "manual" in msg
+        # Enhancement happened and text is on the clipboard, so it counts.
+        assert state.enhancement_count == 1
+
+    def test_copy_tool_failure_notifies(self) -> None:
+        platform = self._make_platform()
+        platform.clipboard.copy_selection.side_effect = RuntimeError(
+            "xdotool not found"
+        )
+        state = DaemonState()
+        config: dict = {}
+
+        # Must not raise even though copy_selection blows up.
+        _on_hotkey(state, config, platform)
+
+        platform.notify.send.assert_called_once()
+        msg = platform.notify.send.call_args[0][1].lower()
+        assert "copy" in msg or "tool" in msg
+        assert state.enhancement_count == 0
+
     def test_engine_error_notifies(self, tmp_path: Path) -> None:
         platform = self._make_platform()
         state = DaemonState()

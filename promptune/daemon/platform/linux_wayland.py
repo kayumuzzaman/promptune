@@ -128,7 +128,11 @@ class WaylandHotkey(HotkeyBackend):
                 "org.freedesktop.portal.GlobalShortcuts"
             )
 
-            session_token = f"promptune_session_{os.getpid()}"
+            # Stable session token: GlobalShortcuts portals persist bindings by
+            # session handle, so reusing one token across restarts lets a
+            # previously-bound shortcut be reused instead of re-prompting each
+            # launch. Per-request handle tokens stay unique (pid-based).
+            session_token = "promptune_session"
             create_token = f"promptune_create_{os.getpid()}"
             create_request_path = self._portal_request_path(bus, create_token)
             create_response = self._watch_portal_response(
@@ -429,19 +433,25 @@ class WaylandClipboard(ClipboardBackend):
                 ],
                 check=True,
             )
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             _log.error(
                 "ydotool not found — cannot simulate copy; "
                 "install ydotool and run ydotoold"
             )
-            return None
+            raise RuntimeError(
+                "ydotool not found; install ydotool and run ydotoold "
+                "to read the selection"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             _log.error("ydotool copy failed (exit %s)", exc.returncode)
-            return None
+            raise RuntimeError(
+                f"ydotool copy failed (exit {exc.returncode}); "
+                "is ydotoold running?"
+            ) from exc
         time.sleep(self._settle_ms / 1000.0)
         return self.read()
 
-    def paste_result(self, text: str) -> None:
+    def paste_result(self, text: str) -> bool:
         # write() raises with a clear message if wl-copy is missing/fails, so
         # the enhanced text is never silently dropped.
         self.write(text)
@@ -464,11 +474,14 @@ class WaylandClipboard(ClipboardBackend):
                 "ydotool not found — enhanced text left on clipboard; "
                 "paste manually"
             )
+            return False
         except subprocess.CalledProcessError as exc:
             _log.warning(
                 "ydotool paste failed (exit %s) — text left on clipboard",
                 exc.returncode,
             )
+            return False
+        return True
 
 
 class WaylandNotify(NotifyBackend):

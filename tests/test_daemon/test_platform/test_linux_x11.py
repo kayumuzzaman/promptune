@@ -415,24 +415,26 @@ class TestX11Clipboard:
             )
             assert result == "selected"
 
-    def test_copy_selection_returns_none_when_xdotool_missing(self) -> None:
+    def test_copy_selection_raises_when_xdotool_missing(self) -> None:
         cb = X11Clipboard(settle_ms=0)
         with (
             patch("subprocess.run", side_effect=FileNotFoundError),
             patch.object(cb, "read") as mock_read,
+            pytest.raises(RuntimeError),
         ):
-            assert cb.copy_selection() is None
-            mock_read.assert_not_called()
+            cb.copy_selection()
+        mock_read.assert_not_called()
 
-    def test_copy_selection_returns_none_on_xdotool_error(self) -> None:
+    def test_copy_selection_raises_on_xdotool_error(self) -> None:
         cb = X11Clipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "xdotool")
         with (
             patch("subprocess.run", side_effect=err),
             patch.object(cb, "read") as mock_read,
+            pytest.raises(RuntimeError),
         ):
-            assert cb.copy_selection() is None
-            mock_read.assert_not_called()
+            cb.copy_selection()
+        mock_read.assert_not_called()
 
     def test_paste_result_simulates_ctrl_v(self) -> None:
         cb = X11Clipboard(settle_ms=0)

@@ -174,6 +174,9 @@ class TestWaylandHotkey:
             events.append("create")
             assert "session_handle_token" in options
             assert "handle_token" in options
+            # Session token must be stable across restarts (no pid) so a
+            # previously bound portal shortcut can be reused.
+            assert options["session_handle_token"].value == "promptune_session"
             nonlocal expected_session_handle
             expected_session_handle = hk._portal_session_handle(
                 bus, options["session_handle_token"].value
@@ -781,20 +784,21 @@ class TestWaylandClipboard:
             )
             assert result == "selected"
 
-    def test_copy_selection_returns_none_when_ydotool_missing(self) -> None:
+    def test_copy_selection_raises_when_ydotool_missing(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         with (
             patch("subprocess.run", side_effect=FileNotFoundError),
             patch.object(cb, "read") as mock_read,
+            pytest.raises(RuntimeError),
         ):
-            assert cb.copy_selection() is None
-            mock_read.assert_not_called()
+            cb.copy_selection()
+        mock_read.assert_not_called()
 
-    def test_copy_selection_returns_none_on_ydotool_error(self) -> None:
+    def test_copy_selection_raises_on_ydotool_error(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "ydotool")
-        with patch("subprocess.run", side_effect=err):
-            assert cb.copy_selection() is None
+        with patch("subprocess.run", side_effect=err), pytest.raises(RuntimeError):
+            cb.copy_selection()
 
     def test_paste_result_uses_ydotool(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
