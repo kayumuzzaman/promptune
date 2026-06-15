@@ -171,7 +171,12 @@ def _on_hotkey(
             )
             return
 
-        if not selected_text:
+        # A copy keystroke with nothing selected (or an app that ignores it)
+        # leaves the clipboard unchanged, so copy_selection() hands back the
+        # pre-existing contents. Reject that stale value as "no selection"
+        # rather than enhancing/pasting whatever happened to be on the
+        # clipboard.
+        if not selected_text or selected_text == original_clipboard:
             platform.notify.send(
                 "Promptune", "No text selected. Select text first.", sound=False
             )
@@ -204,7 +209,12 @@ def _on_hotkey(
         # raising; catch it here so the hotkey thread never dies silently
         # and the user always gets feedback.
         try:
-            if app_after == app_before:
+            # Only auto-paste when the focused window is known AND unchanged.
+            # Linux active-window detection often degrades to "" (locked-down
+            # GNOME Shell.Eval, unsupported desktops); treating "" == "" as
+            # "same window" would inject the prompt into whatever is focused
+            # now — possibly the wrong app. Unknown focus -> clipboard only.
+            if app_before and app_after and app_after == app_before:
                 injected = platform.clipboard.paste_result(result.enhanced)
                 if injected:
                     delta = result.score_after.total - result.score_before.total

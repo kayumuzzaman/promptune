@@ -269,6 +269,61 @@ class TestOnHotkey:
         assert "copy" in msg or "tool" in msg
         assert state.enhancement_count == 0
 
+    def test_unknown_focus_uses_manual_paste(self, tmp_path: Path) -> None:
+        """When active-window detection is unavailable both ids are "".
+
+        That must NOT be treated as "same window" — auto-pasting into an
+        unknown focus risks injecting the prompt into the wrong app. Fall
+        back to the clipboard-only path instead.
+        """
+        platform = self._make_platform()
+        platform.active_window.get_frontmost_app.return_value = ""
+        state = DaemonState()
+        config = {
+            "enhancement": {"max_tier": 0},
+            "provider": {"default": "claude", "format_style": "auto"},
+            "local_llm": {"enabled": False},
+            "api_keys": {},
+            "context": {},
+            "history": {"enabled": False},
+        }
+        undo_file = tmp_path / "undo.txt"
+
+        with (
+            patch("promptune.daemon.daemon.enhance") as mock_enhance,
+            patch("promptune.daemon.daemon.UNDO_FILE", undo_file),
+        ):
+            mock_result = MagicMock()
+            mock_result.enhanced = "enhanced text"
+            mock_result.score_before.total = 40
+            mock_result.score_after.total = 75
+            mock_enhance.return_value = mock_result
+
+            _on_hotkey(state, config, platform)
+
+            platform.clipboard.write.assert_called_once_with("enhanced text")
+            platform.clipboard.paste_result.assert_not_called()
+            assert "clipboard" in platform.notify.send.call_args[0][1].lower()
+
+    def test_stale_clipboard_treated_as_no_selection(self) -> None:
+        """Ctrl+C with nothing selected leaves the clipboard unchanged.
+
+        copy_selection() then returns the pre-existing clipboard contents;
+        that stale value must be rejected rather than enhanced/pasted.
+        """
+        platform = self._make_platform()
+        platform.clipboard.read.return_value = "old clipboard value"
+        platform.clipboard.copy_selection.return_value = "old clipboard value"
+        state = DaemonState()
+        config: dict = {}
+
+        _on_hotkey(state, config, platform)
+
+        platform.notify.send.assert_called_once()
+        assert "Select text" in platform.notify.send.call_args[0][1]
+        assert state.enhancement_count == 0
+        platform.clipboard.paste_result.assert_not_called()
+
     def test_engine_error_notifies(self, tmp_path: Path) -> None:
         platform = self._make_platform()
         state = DaemonState()

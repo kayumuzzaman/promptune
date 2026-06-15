@@ -29,6 +29,19 @@ _X11_MOD_MASK: dict[str, int] = {
     "super": 1 << 6,
 }
 
+# Caps Lock (LockMask) and Num Lock (Mod2Mask) add bits to an event's
+# modifier state, so a passive grab for the bare mask never fires while
+# either is on — a common desktop state. Grab every combination of the two
+# lock bits so the hotkey works regardless of lock state.
+_X11_LOCK_MASK = 1 << 1  # LockMask (Caps Lock)
+_X11_NUMLOCK_MASK = 1 << 4  # Mod2Mask (Num Lock)
+_X11_LOCK_COMBOS: tuple[int, ...] = (
+    0,
+    _X11_LOCK_MASK,
+    _X11_NUMLOCK_MASK,
+    _X11_LOCK_MASK | _X11_NUMLOCK_MASK,
+)
+
 
 def _parse_combo(combo: str) -> tuple[str, int]:
     """Parse 'ctrl+shift+e' into (key_name, modifier_mask).
@@ -91,17 +104,19 @@ class X11Hotkey(HotkeyBackend):
             def _error_handler(err, request):  # type: ignore[no-untyped-def]
                 error_caught.append(err)
 
-            root.grab_key(
-                keycode, mod_mask, True,
-                X.GrabModeAsync, X.GrabModeAsync,
-                onerror=_error_handler,
-            )
+            for extra in _X11_LOCK_COMBOS:
+                root.grab_key(
+                    keycode, mod_mask | extra, True,
+                    X.GrabModeAsync, X.GrabModeAsync,
+                    onerror=_error_handler,
+                )
             d.sync()
 
             if error_caught:
                 return False
 
-            root.ungrab_key(keycode, mod_mask)
+            for extra in _X11_LOCK_COMBOS:
+                root.ungrab_key(keycode, mod_mask | extra)
             return True
         except Exception:
             _log.debug("X11 grab test failed", exc_info=True)
@@ -135,10 +150,11 @@ class X11Hotkey(HotkeyBackend):
                 _log.error("X11 event loop: unknown key %r", self._key_name)
                 return
 
-            root.grab_key(
-                keycode, self._mod_mask, True,
-                X.GrabModeAsync, X.GrabModeAsync,
-            )
+            for extra in _X11_LOCK_COMBOS:
+                root.grab_key(
+                    keycode, self._mod_mask | extra, True,
+                    X.GrabModeAsync, X.GrabModeAsync,
+                )
 
             while not self._stop_event.is_set():
                 if d.pending_events() > 0:
@@ -151,10 +167,11 @@ class X11Hotkey(HotkeyBackend):
             _log.error("X11 event loop failed", exc_info=True)
         finally:
             if root is not None and keycode:
-                try:
-                    root.ungrab_key(keycode, self._mod_mask)
-                except Exception:
-                    _log.debug("X11 ungrab_key failed", exc_info=True)
+                for extra in _X11_LOCK_COMBOS:
+                    try:
+                        root.ungrab_key(keycode, self._mod_mask | extra)
+                    except Exception:
+                        _log.debug("X11 ungrab_key failed", exc_info=True)
             if d is not None:
                 try:
                     d.close()

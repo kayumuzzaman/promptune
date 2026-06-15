@@ -176,9 +176,22 @@ class TestX11Hotkey:
         d = _make_display()
         with _fake_xlib(d):
             assert hk._try_grab("ctrl+shift+e") is True
-        d.screen.return_value.root.grab_key.assert_called_once()
-        d.screen.return_value.root.ungrab_key.assert_called_once()
+        root = d.screen.return_value.root
+        # Grabbed/ungrabbed for all four lock-modifier variants.
+        assert root.grab_key.call_count == 4
+        assert root.ungrab_key.call_count == 4
         d.close.assert_called_once()
+
+    def test_try_grab_probes_lock_modifier_masks(self) -> None:
+        hk = X11Hotkey()
+        d = _make_display()
+        root = d.screen.return_value.root
+        with _fake_xlib(d):
+            assert hk._try_grab("ctrl+shift+e") is True
+        base = (1 << 2) | (1 << 0)
+        masks = {c.args[1] for c in root.grab_key.call_args_list}
+        assert masks == {base, base | (1 << 1), base | (1 << 4),
+                         base | (1 << 1) | (1 << 4)}
 
     def test_try_grab_no_key_returns_false_no_display(self) -> None:
         hk = X11Hotkey()
@@ -252,9 +265,22 @@ class TestX11Hotkey:
             hk.listen()
 
         cb.assert_called_once()
-        root.grab_key.assert_called_once()
-        root.ungrab_key.assert_called_once()
+        assert root.grab_key.call_count == 4
+        assert root.ungrab_key.call_count == 4
         d.close.assert_called_once()
+
+    def test_listen_grabs_lock_modifier_masks(self) -> None:
+        hk = X11Hotkey()
+        hk.register("ctrl+shift+e", MagicMock())
+        hk.stop()  # skip the loop body; just exercise the grab
+        d = _make_display()
+        root = d.screen.return_value.root
+        with _fake_xlib(d):
+            hk.listen()
+        base = (1 << 2) | (1 << 0)
+        masks = {c.args[1] for c in root.grab_key.call_args_list}
+        assert masks == {base, base | (1 << 1), base | (1 << 4),
+                         base | (1 << 1) | (1 << 4)}
 
     def test_listen_ignores_non_keypress(self) -> None:
         hk = X11Hotkey()
@@ -280,8 +306,8 @@ class TestX11Hotkey:
         d = _make_display()
         with _fake_xlib(d):
             hk.listen()
-        d.screen.return_value.root.grab_key.assert_called_once()
-        d.screen.return_value.root.ungrab_key.assert_called_once()
+        assert d.screen.return_value.root.grab_key.call_count == 4
+        assert d.screen.return_value.root.ungrab_key.call_count == 4
         d.close.assert_called_once()
 
     def test_listen_unknown_key_returns_without_grab(self) -> None:
@@ -304,7 +330,7 @@ class TestX11Hotkey:
         with _fake_xlib(d):
             # Should not raise; finally must run.
             hk.listen()
-        root.ungrab_key.assert_called_once()
+        assert root.ungrab_key.call_count == 4
         d.close.assert_called_once()
 
     def test_listen_import_error_logs_and_returns(self) -> None:
@@ -323,7 +349,7 @@ class TestX11Hotkey:
         d.close.side_effect = RuntimeError("close boom")
         with _fake_xlib(d):
             hk.listen()  # both cleanup failures must be swallowed
-        root.ungrab_key.assert_called_once()
+        assert root.ungrab_key.call_count == 4
         d.close.assert_called_once()
 
 
