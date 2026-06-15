@@ -433,10 +433,15 @@ class WaylandClipboard(ClipboardBackend):
         # text matches the previous clipboard. Restore the prior value if
         # nothing was copied so the hotkey never wipes the clipboard.
         previous = self.read()
-        try:
-            self.write("")  # best-effort clear
-        except Exception:
-            _log.debug("clipboard clear failed", exc_info=True)
+        # Only clear when the prior contents are restorable text. If read()
+        # returned None (non-text payload like an image, or a read failure),
+        # clearing would destroy data we cannot put back — and no text could
+        # masquerade as a selection, so the clear isn't needed for detection.
+        if previous is not None:
+            try:
+                self.write("")  # best-effort clear
+            except Exception:
+                _log.debug("clipboard clear failed", exc_info=True)
         copied = False
         try:
             try:

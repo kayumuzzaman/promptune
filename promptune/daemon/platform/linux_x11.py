@@ -238,7 +238,14 @@ class X11Clipboard(ClipboardBackend):
         # whose text matches the previous clipboard contents. Restore the
         # previous value if nothing was copied so the hotkey never wipes it.
         previous = self.read()
-        self._write("")  # best-effort clear; read() below surfaces tool errors
+        # Only clear when the prior contents are restorable text. If read()
+        # returned None (non-text payload like an image, or a read failure),
+        # clearing would destroy data we cannot put back — and there is no
+        # text that could masquerade as a selection, so the clear isn't
+        # needed for detection anyway.
+        cleared = previous is not None
+        if cleared:
+            self._write("")  # best-effort; _read() below surfaces tool errors
         copied = False
         try:
             try:

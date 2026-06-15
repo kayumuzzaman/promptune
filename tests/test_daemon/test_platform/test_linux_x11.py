@@ -466,6 +466,22 @@ class TestX11Clipboard:
         ):
             assert cb.copy_selection() == "foo"
 
+    def test_copy_selection_skips_clear_when_clipboard_unreadable(self) -> None:
+        """Non-text/unreadable clipboard (previous=None) must not be cleared.
+
+        Otherwise an image (or other non-text payload) is wiped on a hotkey
+        press with no selection, with nothing to restore.
+        """
+        cb = X11Clipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "read", return_value=None),
+            patch.object(cb, "_read", return_value=""),
+            patch.object(cb, "_write") as mock_write,
+        ):
+            assert cb.copy_selection() is None
+            mock_write.assert_not_called()
+
     def test_copy_selection_empty_returns_none_and_restores(self) -> None:
         """Clipboard unchanged after copy -> None, and previous is restored."""
         cb = X11Clipboard(settle_ms=0)
