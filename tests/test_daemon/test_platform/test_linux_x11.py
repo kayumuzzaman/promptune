@@ -432,26 +432,59 @@ class TestX11Clipboard:
         cb = X11Clipboard(settle_ms=0)
         with (
             patch("subprocess.run") as mock_run,
-            patch.object(cb, "_read", return_value="selected"),
+            patch.object(cb, "_read", side_effect=["prev", "selected"]),
+            patch.object(cb, "_write"),
         ):
             result = cb.copy_selection()
-            assert mock_run.call_args_list[0] == call(
-                ["xdotool", "key", "--clearmodifiers", "ctrl+c"],
-                check=True,
+            assert any(
+                c.args[0] == ["xdotool", "key", "--clearmodifiers", "ctrl+c"]
+                for c in mock_run.call_args_list
             )
             assert result == "selected"
+
+    def test_copy_selection_clears_clipboard_before_copy(self) -> None:
+        """The clipboard is cleared first so 'nothing copied' is detectable."""
+        cb = X11Clipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["prev", "selected"]),
+            patch.object(cb, "_write") as mock_write,
+        ):
+            cb.copy_selection()
+            mock_write.assert_any_call("")
+
+    def test_copy_selection_accepts_selection_equal_to_clipboard(self) -> None:
+        """A real selection identical to the prior clipboard is still valid.
+
+        (e.g. user copied a prompt, then re-selects it to enhance.)
+        """
+        cb = X11Clipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["foo", "foo"]),
+            patch.object(cb, "_write"),
+        ):
+            assert cb.copy_selection() == "foo"
+
+    def test_copy_selection_empty_returns_none_and_restores(self) -> None:
+        """Clipboard unchanged after copy -> None, and previous is restored."""
+        cb = X11Clipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["prev", ""]),
+            patch.object(cb, "_write") as mock_write,
+        ):
+            assert cb.copy_selection() is None
+            mock_write.assert_any_call("")  # cleared
+            mock_write.assert_any_call("prev")  # restored
 
     def test_copy_selection_raises_when_xclip_read_missing(self) -> None:
         """xdotool copies but xclip read tool is missing -> raise, not empty."""
         cb = X11Clipboard(settle_ms=0)
-
-        def _run(args: list[str], **kwargs: object) -> MagicMock:
-            if args[0] == "xclip":
-                raise FileNotFoundError
-            return MagicMock(returncode=0)
-
         with (
-            patch("subprocess.run", side_effect=_run),
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=FileNotFoundError),
+            patch.object(cb, "_write"),
             pytest.raises(RuntimeError, match="xclip"),
         ):
             cb.copy_selection()
@@ -459,50 +492,34 @@ class TestX11Clipboard:
     def test_copy_selection_raises_when_xclip_read_errors(self) -> None:
         cb = X11Clipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "xclip")
-
-        def _run(args: list[str], **kwargs: object) -> MagicMock:
-            if args[0] == "xclip":
-                raise err
-            return MagicMock(returncode=0)
-
         with (
-            patch("subprocess.run", side_effect=_run),
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=err),
+            patch.object(cb, "_write"),
             pytest.raises(RuntimeError, match="xclip"),
         ):
             cb.copy_selection()
-
-    def test_copy_selection_returns_empty_for_empty_selection(self) -> None:
-        """xclip read succeeds but clipboard is empty -> '' (not a failure)."""
-        cb = X11Clipboard(settle_ms=0)
-
-        def _run(args: list[str], **kwargs: object) -> MagicMock:
-            if args[0] == "xclip":
-                return MagicMock(stdout="", returncode=0)
-            return MagicMock(returncode=0)
-
-        with patch("subprocess.run", side_effect=_run):
-            assert cb.copy_selection() == ""
 
     def test_copy_selection_raises_when_xdotool_missing(self) -> None:
         cb = X11Clipboard(settle_ms=0)
         with (
             patch("subprocess.run", side_effect=FileNotFoundError),
-            patch.object(cb, "read") as mock_read,
+            patch.object(cb, "_read", return_value="prev"),
+            patch.object(cb, "_write"),
             pytest.raises(RuntimeError),
         ):
             cb.copy_selection()
-        mock_read.assert_not_called()
 
     def test_copy_selection_raises_on_xdotool_error(self) -> None:
         cb = X11Clipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "xdotool")
         with (
             patch("subprocess.run", side_effect=err),
-            patch.object(cb, "read") as mock_read,
+            patch.object(cb, "_read", return_value="prev"),
+            patch.object(cb, "_write"),
             pytest.raises(RuntimeError),
         ):
             cb.copy_selection()
-        mock_read.assert_not_called()
 
     def test_paste_result_simulates_ctrl_v(self) -> None:
         cb = X11Clipboard(settle_ms=0)

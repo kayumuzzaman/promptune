@@ -171,12 +171,11 @@ def _on_hotkey(
             )
             return
 
-        # A copy keystroke with nothing selected (or an app that ignores it)
-        # leaves the clipboard unchanged, so copy_selection() hands back the
-        # pre-existing contents. Reject that stale value as "no selection"
-        # rather than enhancing/pasting whatever happened to be on the
-        # clipboard.
-        if not selected_text or selected_text == original_clipboard:
+        # copy_selection() clears the clipboard before the copy keystroke, so
+        # a falsy result means nothing was actually selected (the backend has
+        # already restored the prior clipboard); a stale value can no longer
+        # masquerade as a selection here.
+        if not selected_text:
             platform.notify.send(
                 "Promptune", "No text selected. Select text first.", sound=False
             )

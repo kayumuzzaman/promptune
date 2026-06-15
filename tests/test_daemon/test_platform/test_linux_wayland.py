@@ -775,26 +775,67 @@ class TestWaylandClipboard:
         cb = WaylandClipboard(settle_ms=0)
         with (
             patch("subprocess.run") as mock_run,
-            patch.object(cb, "_read", return_value="selected"),
+            patch.object(cb, "_read", side_effect=["prev", "selected"]),
+            patch.object(cb, "write"),
         ):
             result = cb.copy_selection()
-            assert mock_run.call_args_list[0] == call(
-                ["ydotool", "key", "29:1", "46:1", "46:0", "29:0"],
-                check=True,
+            assert any(
+                c.args[0] == ["ydotool", "key", "29:1", "46:1", "46:0", "29:0"]
+                for c in mock_run.call_args_list
             )
             assert result == "selected"
+
+    def test_copy_selection_clears_clipboard_before_copy(self) -> None:
+        """The clipboard is cleared first so 'nothing copied' is detectable."""
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["prev", "selected"]),
+            patch.object(cb, "write") as mock_write,
+        ):
+            cb.copy_selection()
+            mock_write.assert_any_call("")
+
+    def test_copy_selection_accepts_selection_equal_to_clipboard(self) -> None:
+        """A real selection identical to the prior clipboard is still valid."""
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["foo", "foo"]),
+            patch.object(cb, "write"),
+        ):
+            assert cb.copy_selection() == "foo"
+
+    def test_copy_selection_empty_returns_none_and_restores(self) -> None:
+        """Clipboard unchanged after copy -> None, and previous is restored."""
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["prev", ""]),
+            patch.object(cb, "write") as mock_write,
+        ):
+            assert cb.copy_selection() is None
+            mock_write.assert_any_call("")  # cleared
+            mock_write.assert_any_call("prev")  # restored
+
+    def test_copy_selection_swallows_clear_and_restore_failures(self) -> None:
+        """A failing wl-copy during clear/restore must not crash the hotkey."""
+        cb = WaylandClipboard(settle_ms=0)
+        with (
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=["prev", ""]),
+            patch.object(cb, "write", side_effect=RuntimeError("wl-copy gone")),
+        ):
+            # No selection -> None; clear AND restore both raise, both swallowed.
+            assert cb.copy_selection() is None
 
     def test_copy_selection_raises_when_wl_paste_missing(self) -> None:
         """ydotool copies but wl-paste read tool is missing -> raise."""
         cb = WaylandClipboard(settle_ms=0)
-
-        def _run(args: list[str], **kwargs: object) -> MagicMock:
-            if args[0] == "wl-paste":
-                raise FileNotFoundError
-            return MagicMock(returncode=0)
-
         with (
-            patch("subprocess.run", side_effect=_run),
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=FileNotFoundError),
+            patch.object(cb, "write"),
             pytest.raises(RuntimeError, match="wl-paste"),
         ):
             cb.copy_selection()
@@ -802,44 +843,33 @@ class TestWaylandClipboard:
     def test_copy_selection_raises_when_wl_paste_errors(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "wl-paste")
-
-        def _run(args: list[str], **kwargs: object) -> MagicMock:
-            if args[0] == "wl-paste":
-                raise err
-            return MagicMock(returncode=0)
-
         with (
-            patch("subprocess.run", side_effect=_run),
+            patch("subprocess.run"),
+            patch.object(cb, "_read", side_effect=err),
+            patch.object(cb, "write"),
             pytest.raises(RuntimeError, match="wl-paste"),
         ):
             cb.copy_selection()
-
-    def test_copy_selection_returns_empty_for_empty_selection(self) -> None:
-        """wl-paste read succeeds but clipboard is empty -> '' (not failure)."""
-        cb = WaylandClipboard(settle_ms=0)
-
-        def _run(args: list[str], **kwargs: object) -> MagicMock:
-            if args[0] == "wl-paste":
-                return MagicMock(stdout="", returncode=0)
-            return MagicMock(returncode=0)
-
-        with patch("subprocess.run", side_effect=_run):
-            assert cb.copy_selection() == ""
 
     def test_copy_selection_raises_when_ydotool_missing(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         with (
             patch("subprocess.run", side_effect=FileNotFoundError),
-            patch.object(cb, "read") as mock_read,
+            patch.object(cb, "_read", return_value="prev"),
+            patch.object(cb, "write"),
             pytest.raises(RuntimeError),
         ):
             cb.copy_selection()
-        mock_read.assert_not_called()
 
     def test_copy_selection_raises_on_ydotool_error(self) -> None:
         cb = WaylandClipboard(settle_ms=0)
         err = subprocess.CalledProcessError(1, "ydotool")
-        with patch("subprocess.run", side_effect=err), pytest.raises(RuntimeError):
+        with (
+            patch("subprocess.run", side_effect=err),
+            patch.object(cb, "_read", return_value="prev"),
+            patch.object(cb, "write"),
+            pytest.raises(RuntimeError),
+        ):
             cb.copy_selection()
 
     def test_paste_result_uses_ydotool(self) -> None:

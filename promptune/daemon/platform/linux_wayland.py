@@ -427,48 +427,70 @@ class WaylandClipboard(ClipboardBackend):
             raise RuntimeError("wl-copy failed to write clipboard") from exc
 
     def copy_selection(self) -> str | None:
+        # Clear the clipboard before the copy keystroke so a clipboard left
+        # unchanged afterwards (nothing selected, or the app ignored the
+        # keystroke) is distinguishable from a real selection — even one whose
+        # text matches the previous clipboard. Restore the prior value if
+        # nothing was copied so the hotkey never wipes the clipboard.
+        previous = self.read()
         try:
-            subprocess.run(
-                [
-                    "ydotool", "key",
-                    f"{self._KEY_LEFTCTRL}:1",
-                    f"{self._KEY_C}:1",
-                    f"{self._KEY_C}:0",
-                    f"{self._KEY_LEFTCTRL}:0",
-                ],
-                check=True,
-            )
-        except FileNotFoundError as exc:
-            _log.error(
-                "ydotool not found — cannot simulate copy; "
-                "install ydotool and run ydotoold"
-            )
-            raise RuntimeError(
-                "ydotool not found; install ydotool and run ydotoold "
-                "to read the selection"
-            ) from exc
-        except subprocess.CalledProcessError as exc:
-            _log.error("ydotool copy failed (exit %s)", exc.returncode)
-            raise RuntimeError(
-                f"ydotool copy failed (exit {exc.returncode}); "
-                "is ydotoold running?"
-            ) from exc
-        time.sleep(self._settle_ms / 1000.0)
-        # A read-tool failure (wl-paste missing/broken) must raise so the
-        # daemon reports the broken copy tool, not "No text selected" — the
-        # latter is reserved for a genuinely empty selection.
+            self.write("")  # best-effort clear
+        except Exception:
+            _log.debug("clipboard clear failed", exc_info=True)
+        copied = False
         try:
-            return self._read()
-        except FileNotFoundError as exc:
-            _log.error("wl-paste not found — install wl-clipboard")
-            raise RuntimeError(
-                "wl-paste not found; install the 'wl-clipboard' package"
-            ) from exc
-        except subprocess.CalledProcessError as exc:
-            _log.error("wl-paste read failed (exit %s)", exc.returncode)
-            raise RuntimeError(
-                f"wl-paste read failed (exit {exc.returncode})"
-            ) from exc
+            try:
+                subprocess.run(
+                    [
+                        "ydotool", "key",
+                        f"{self._KEY_LEFTCTRL}:1",
+                        f"{self._KEY_C}:1",
+                        f"{self._KEY_C}:0",
+                        f"{self._KEY_LEFTCTRL}:0",
+                    ],
+                    check=True,
+                )
+            except FileNotFoundError as exc:
+                _log.error(
+                    "ydotool not found — cannot simulate copy; "
+                    "install ydotool and run ydotoold"
+                )
+                raise RuntimeError(
+                    "ydotool not found; install ydotool and run ydotoold "
+                    "to read the selection"
+                ) from exc
+            except subprocess.CalledProcessError as exc:
+                _log.error("ydotool copy failed (exit %s)", exc.returncode)
+                raise RuntimeError(
+                    f"ydotool copy failed (exit {exc.returncode}); "
+                    "is ydotoold running?"
+                ) from exc
+            time.sleep(self._settle_ms / 1000.0)
+            # A read-tool failure (wl-paste missing/broken) must raise so the
+            # daemon reports the broken copy tool, not "No text selected" —
+            # the latter is reserved for a genuinely empty selection.
+            try:
+                text = self._read()
+            except FileNotFoundError as exc:
+                _log.error("wl-paste not found — install wl-clipboard")
+                raise RuntimeError(
+                    "wl-paste not found; install the 'wl-clipboard' package"
+                ) from exc
+            except subprocess.CalledProcessError as exc:
+                _log.error("wl-paste read failed (exit %s)", exc.returncode)
+                raise RuntimeError(
+                    f"wl-paste read failed (exit {exc.returncode})"
+                ) from exc
+            if text:
+                copied = True
+                return text
+            return None
+        finally:
+            if not copied and previous:
+                try:
+                    self.write(previous)
+                except Exception:
+                    _log.debug("clipboard restore failed", exc_info=True)
 
     def paste_result(self, text: str) -> bool:
         # write() raises with a clear message if wl-copy is missing/fails, so

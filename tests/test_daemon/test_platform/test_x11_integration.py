@@ -64,7 +64,9 @@ def test_grab_conflict_detection_runs() -> None:
     from promptune.daemon.platform.linux_x11 import X11Hotkey
 
     hotkey = X11Hotkey()
-    assert hotkey.check_conflict("ctrl+shift+e") in (True, False)
+    # On a bare Xvfb display nothing else has grabbed the combo, so the real
+    # XGrabKey/XUngrabKey round-trip must succeed -> no conflict.
+    assert hotkey.check_conflict("ctrl+shift+e") is False
 
 
 @requires_x11_clipboard

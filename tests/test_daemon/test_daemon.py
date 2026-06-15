@@ -305,25 +305,6 @@ class TestOnHotkey:
             platform.clipboard.paste_result.assert_not_called()
             assert "clipboard" in platform.notify.send.call_args[0][1].lower()
 
-    def test_stale_clipboard_treated_as_no_selection(self) -> None:
-        """Ctrl+C with nothing selected leaves the clipboard unchanged.
-
-        copy_selection() then returns the pre-existing clipboard contents;
-        that stale value must be rejected rather than enhanced/pasted.
-        """
-        platform = self._make_platform()
-        platform.clipboard.read.return_value = "old clipboard value"
-        platform.clipboard.copy_selection.return_value = "old clipboard value"
-        state = DaemonState()
-        config: dict = {}
-
-        _on_hotkey(state, config, platform)
-
-        platform.notify.send.assert_called_once()
-        assert "Select text" in platform.notify.send.call_args[0][1]
-        assert state.enhancement_count == 0
-        platform.clipboard.paste_result.assert_not_called()
-
     def test_engine_error_notifies(self, tmp_path: Path) -> None:
         platform = self._make_platform()
         state = DaemonState()

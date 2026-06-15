@@ -232,33 +232,50 @@ class X11Clipboard(ClipboardBackend):
             return False
 
     def copy_selection(self) -> str | None:
+        # Clear the clipboard before synthesizing the copy so that a clipboard
+        # left unchanged afterwards (nothing selected, or the focused app
+        # ignored Ctrl+C) is distinguishable from a real selection — even one
+        # whose text matches the previous clipboard contents. Restore the
+        # previous value if nothing was copied so the hotkey never wipes it.
+        previous = self.read()
+        self._write("")  # best-effort clear; read() below surfaces tool errors
+        copied = False
         try:
-            subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", "ctrl+c"],
-                check=True,
-            )
-        except FileNotFoundError as exc:
-            _log.error("xdotool not found — cannot simulate copy")
-            raise RuntimeError(
-                "xdotool not found; install xdotool to read the selection"
-            ) from exc
-        except Exception as exc:
-            _log.error("xdotool copy failed", exc_info=True)
-            raise RuntimeError(f"xdotool copy failed: {exc}") from exc
-        time.sleep(self._settle_ms / 1000.0)
-        # Distinguish a read-tool failure (xclip missing/broken) from a
-        # genuinely empty selection — the former must raise so the daemon
-        # reports the broken copy tool instead of "No text selected".
-        try:
-            return self._read()
-        except FileNotFoundError as exc:
-            _log.error("xclip not found — cannot read selection")
-            raise RuntimeError(
-                "xclip not found; install xclip to read the selection"
-            ) from exc
-        except Exception as exc:
-            _log.error("xclip read failed", exc_info=True)
-            raise RuntimeError(f"xclip read failed: {exc}") from exc
+            try:
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "ctrl+c"],
+                    check=True,
+                )
+            except FileNotFoundError as exc:
+                _log.error("xdotool not found — cannot simulate copy")
+                raise RuntimeError(
+                    "xdotool not found; install xdotool to read the selection"
+                ) from exc
+            except Exception as exc:
+                _log.error("xdotool copy failed", exc_info=True)
+                raise RuntimeError(f"xdotool copy failed: {exc}") from exc
+            time.sleep(self._settle_ms / 1000.0)
+            # A read-tool failure (xclip missing/broken) must raise so the
+            # daemon reports the broken copy tool instead of "No text
+            # selected"; a genuinely empty clipboard returns None below.
+            try:
+                text = self._read()
+            except FileNotFoundError as exc:
+                _log.error("xclip not found — cannot read selection")
+                raise RuntimeError(
+                    "xclip not found; install xclip to read the selection"
+                ) from exc
+            except Exception as exc:
+                _log.error("xclip read failed", exc_info=True)
+                raise RuntimeError(f"xclip read failed: {exc}") from exc
+            if text:
+                copied = True
+                return text
+            return None
+        finally:
+            # Restore the prior clipboard on no-selection or any failure.
+            if not copied and previous:
+                self._write(previous)
 
     def paste_result(self, text: str) -> bool:
         # Put the text on the clipboard first so it is never lost even if
