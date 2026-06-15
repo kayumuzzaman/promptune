@@ -9,14 +9,14 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-14 |
-| Branch | main |
+| Date | 2026-06-15 |
+| Branch | feat/wizard-optional-api-key |
 | Python | 3.14.3 |
-| Total Tests | 837 |
-| Test Result | **837 passed, 0 failed** |
+| Total Tests | 847 |
+| Test Result | **847 passed, 0 failed** |
 | Coverage | **93%** (target ≥ 90%) ✅ |
 | Ruff | **PASS** — 0 errors |
-| Mypy | **PASS** — 0 issues in 45 source files |
+| Mypy | **PASS** — 0 issues in 46 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
 
 ---
@@ -92,12 +92,12 @@
 | `promptune/providers/openai.py` | 21 | 1 | 95% | ✅ | |
 | `promptune/providers/openrouter.py` | 29 | 3 | 90% | ✅ | |
 | `promptune/scorer.py` | 250 | 16 | 94% | ✅ | |
-| `promptune/setup.py` | 139 | 5 | 96% | ✅ | +auto_enhance wizard step |
+| `promptune/setup.py` | 161 | 4 | 98% | ✅ | Optional API key + tier resolver |
 | `promptune/shell.py` | 78 | 0 | 100% | ✅ | |
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
 | `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3524** | **239** | **93%** | ✅ | Target: ≥ 90% |
+| **TOTAL** | **3141** | **224** | **93%** | ✅ | Target: ≥ 90% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)

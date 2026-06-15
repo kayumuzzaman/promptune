@@ -51,10 +51,18 @@ To unlock AI-powered enhancement (Tier 1 local LLM, Tier 2 cloud API), run the s
 promptune config init
 ```
 
-In an interactive terminal, the wizard walks you through configuration step by step:
+In an interactive terminal, the wizard first prints a tier overview so you know what costs money:
+
+```
+  Tier 0  Rule-based rewrite       FREE  · offline, no key
+  Tier 1  Local LLM (Ollama, …)    FREE  · private, no key
+  Tier 2  Cloud LLM (Claude/GPT)   PAID  · needs an API key
+```
+
+Then it walks you through configuration step by step:
 
 1. **Provider** — choose your default provider (claude, openai, openrouter)
-2. **API key** — enter your API key (masked input, format validated)
+2. **API key** — optional. Enter a key to enable Tier 2 (cloud), or **leave it blank** to stay on the free tiers (rules + local LLM). Masked input, format validated.
 3. **Model** — choose the model name for your provider (pre-filled with default)
 4. **Advanced settings** (optional) — style, max tier, format
 5. **Local LLM** (optional, shown when max tier >= 1) — enable/disable, host, model name

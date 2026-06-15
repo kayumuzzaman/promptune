@@ -214,6 +214,35 @@ class TestPromptApiKey:
         default_val = call_kwargs.get("default", "")
         assert default_val == "" or default_val is None
 
+    def test_accepts_blank_key_for_free_mode(self) -> None:
+        with (
+            patch("click.prompt", return_value=""),
+            patch("click.echo"),
+        ):
+            result = _prompt_api_key("claude", "")
+        assert result == ""
+
+    def test_shows_paid_note_when_no_existing_key(self) -> None:
+        with (
+            patch("click.prompt", return_value="sk-ant-test123"),
+            patch("click.echo") as mock_echo,
+        ):
+            _prompt_api_key("claude", "")
+        text = " ".join(str(c) for c in mock_echo.call_args_list).lower()
+        assert "paid" in text
+        assert "blank" in text
+
+    def test_blank_key_confirms_free_mode(self) -> None:
+        with (
+            patch("click.prompt", return_value=""),
+            patch("click.echo") as mock_echo,
+        ):
+            _prompt_api_key("claude", "")
+        text = " ".join(str(c) for c in mock_echo.call_args_list).lower()
+        assert "free" in text
+        assert "tier 0" in text
+        assert "tier 1" in text
+
 
 class TestPromptModel:
     """Model name prompt after API key."""
@@ -652,6 +681,164 @@ class TestRunInteractiveSetup:
             result["provider"]["model_openrouter"]
             == "google/gemini-pro"
         )
+
+    def test_explains_tiers_and_cost(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "sk-ant-test123",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo") as mock_echo,
+            patch(
+                "promptune.setup.detect_tools",
+                return_value=[],
+            ),
+        ):
+            run_interactive_setup(config_path, mock_registry)
+        text = " ".join(str(c) for c in mock_echo.call_args_list).lower()
+        assert "tier 0" in text
+        assert "tier 1" in text
+        assert "tier 2" in text
+        assert "free" in text
+        assert "api key" in text
+
+    def test_completes_with_blank_key(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch(
+                "promptune.setup.detect_tools",
+                return_value=[],
+            ),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        assert result["provider"]["default"] == "claude"
+        assert result["api_keys"]["claude"] == ""
+
+    def test_key_enables_tier2_without_advanced(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "sk-ant-test123",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        # Providing a key enables Tier 2 even without opening advanced settings.
+        assert result["enhancement"]["max_tier"] == 2
+
+    def test_blank_key_clamps_tier_even_with_other_provider_key(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[provider]\ndefault = "openai"\n\n'
+            '[api_keys]\nopenai = "sk-existing"\n\n'
+            "[enhancement]\nmax_tier = 2\n"
+        )
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        # Blank key = free mode: clamp to Tier 1 so the saved config matches
+        # what the wizard advertised, even though another provider has a key.
+        assert result["api_keys"]["claude"] == ""
+        assert result["enhancement"]["max_tier"] == 1
+
+    def test_blank_key_clamps_advanced_tier_with_other_provider_key(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[provider]\ndefault = "openai"\n\n'
+            '[api_keys]\nopenai = "sk-existing"\n\n'
+            "[enhancement]\nmax_tier = 2\n"
+        )
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "",
+                    "claude-haiku-4-5-20251001",
+                    "balanced",
+                    2,
+                    "auto",
+                ],
+            ),
+            patch("click.confirm", side_effect=[True, False]),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        assert result["api_keys"]["claude"] == ""
+        assert result["enhancement"]["max_tier"] == 1
+
+    def test_existing_key_preserves_tier_when_advanced_skipped(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[provider]\ndefault = "claude"\n\n'
+            '[api_keys]\nclaude = "sk-ant-existing"\n\n'
+            "[enhancement]\nmax_tier = 0\n"
+        )
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "sk-ant-existing",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        assert result["enhancement"]["max_tier"] == 0
 
 
 class TestWriteConfigEdgeCases:
