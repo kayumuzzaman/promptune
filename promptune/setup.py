@@ -373,7 +373,16 @@ def run_interactive_setup(
     config["enhancement"]["default_mode"] = optional[
         "default_mode"
     ]
-    config["enhancement"]["max_tier"] = optional["max_tier"]
+    # Derive max_tier from key presence unless the user set it explicitly in
+    # advanced settings: a provided key enables Tier 2 (cloud); a blank key
+    # stays in free mode (Tier 0 rules + Tier 1 local). This keeps the saved
+    # config consistent with what the wizard advertised — load_config's
+    # auto-downgrade only checks whether *any* provider has a key, so without
+    # this a keyless default provider could still be left at Tier 2.
+    if advanced_accepted:
+        config["enhancement"]["max_tier"] = optional["max_tier"]
+    else:
+        config["enhancement"]["max_tier"] = 2 if api_key else 1
     config["provider"]["format_style"] = optional[
         "format_style"
     ]

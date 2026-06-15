@@ -734,6 +734,56 @@ class TestRunInteractiveSetup:
         assert result["provider"]["default"] == "claude"
         assert result["api_keys"]["claude"] == ""
 
+    def test_key_enables_tier2_without_advanced(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "sk-ant-test123",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        # Providing a key enables Tier 2 even without opening advanced settings.
+        assert result["enhancement"]["max_tier"] == 2
+
+    def test_blank_key_clamps_tier_even_with_other_provider_key(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[provider]\ndefault = "openai"\n\n'
+            '[api_keys]\nopenai = "sk-existing"\n\n'
+            "[enhancement]\nmax_tier = 2\n"
+        )
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        # Blank key = free mode: clamp to Tier 1 so the saved config matches
+        # what the wizard advertised, even though another provider has a key.
+        assert result["api_keys"]["claude"] == ""
+        assert result["enhancement"]["max_tier"] == 1
+
 
 class TestWriteConfigEdgeCases:
     """Edge cases for config writing."""
