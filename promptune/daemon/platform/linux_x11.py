@@ -172,16 +172,21 @@ class X11Clipboard(ClipboardBackend):
         self._settle_ms = settle_ms
 
     def read(self) -> str | None:
+        """Best-effort clipboard read; returns None if xclip is missing/fails."""
         try:
-            result = subprocess.run(
-                ["xclip", "-selection", "clipboard", "-o"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.replace("\x00", "")
+            return self._read()
         except Exception:
             return None
+
+    def _read(self) -> str:
+        """Read the clipboard, raising if xclip is missing or fails."""
+        result = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.replace("\x00", "")
 
     def write(self, text: str) -> None:
         """Write *text* to the clipboard.
@@ -224,7 +229,19 @@ class X11Clipboard(ClipboardBackend):
             _log.error("xdotool copy failed", exc_info=True)
             raise RuntimeError(f"xdotool copy failed: {exc}") from exc
         time.sleep(self._settle_ms / 1000.0)
-        return self.read()
+        # Distinguish a read-tool failure (xclip missing/broken) from a
+        # genuinely empty selection — the former must raise so the daemon
+        # reports the broken copy tool instead of "No text selected".
+        try:
+            return self._read()
+        except FileNotFoundError as exc:
+            _log.error("xclip not found — cannot read selection")
+            raise RuntimeError(
+                "xclip not found; install xclip to read the selection"
+            ) from exc
+        except Exception as exc:
+            _log.error("xclip read failed", exc_info=True)
+            raise RuntimeError(f"xclip read failed: {exc}") from exc
 
     def paste_result(self, text: str) -> bool:
         # Put the text on the clipboard first so it is never lost even if

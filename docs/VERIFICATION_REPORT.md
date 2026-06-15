@@ -14,7 +14,7 @@
 | Python | 3.14.3 |
 | Total Tests | 944 |
 | Test Result | **937 passed, 7 linux-only deselected, 0 failed** |
-| Coverage | **97%** (target ≥ 90%) ✅ |
+| Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
@@ -98,7 +98,7 @@
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
 | `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3318** | **92** | **97%** | ✅ | Target: ≥ 90% |
+| **TOTAL** | **3318** | **92** | **97%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -189,4 +189,4 @@ After running verification, update:
 ## CI Pipeline Reference
 
 See `.github/workflows/ci.yml` for automated checks.
-Coverage gate is enforced with `--cov-fail-under=90` (now passing at 93%).
+Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97%).

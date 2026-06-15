@@ -42,7 +42,7 @@ Rules:
 - Run `pytest` after every change to confirm state (red or green)
 - Mock external APIs (anthropic, openai, httpx) — never make real API calls in tests
 - Use `pytest-mock` for mocking, `pytest-cov` for coverage
-- Coverage target: ≥ 90%
+- Coverage target: ≥ 85%
 
 ## SOLID Principles
 

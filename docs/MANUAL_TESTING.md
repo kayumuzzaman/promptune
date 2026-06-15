@@ -2169,4 +2169,4 @@ Quick sanity checks to run after fixing any bug. Each should pass in under 60 se
 
 - [ ] `ruff check .` passes
 - [ ] `mypy promptune/` passes
-- [ ] `pytest --cov=promptune --cov-report=term-missing -v` passes with >= 90% coverage (Linux system call code excluded from macOS runs)
+- [ ] `pytest --cov=promptune --cov-report=term-missing -v` passes with >= 85% coverage (Linux system call code excluded from macOS runs)

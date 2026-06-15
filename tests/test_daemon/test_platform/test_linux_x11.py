@@ -406,7 +406,7 @@ class TestX11Clipboard:
         cb = X11Clipboard(settle_ms=0)
         with (
             patch("subprocess.run") as mock_run,
-            patch.object(cb, "read", return_value="selected"),
+            patch.object(cb, "_read", return_value="selected"),
         ):
             result = cb.copy_selection()
             assert mock_run.call_args_list[0] == call(
@@ -414,6 +414,48 @@ class TestX11Clipboard:
                 check=True,
             )
             assert result == "selected"
+
+    def test_copy_selection_raises_when_xclip_read_missing(self) -> None:
+        """xdotool copies but xclip read tool is missing -> raise, not empty."""
+        cb = X11Clipboard(settle_ms=0)
+
+        def _run(args: list[str], **kwargs: object) -> MagicMock:
+            if args[0] == "xclip":
+                raise FileNotFoundError
+            return MagicMock(returncode=0)
+
+        with (
+            patch("subprocess.run", side_effect=_run),
+            pytest.raises(RuntimeError, match="xclip"),
+        ):
+            cb.copy_selection()
+
+    def test_copy_selection_raises_when_xclip_read_errors(self) -> None:
+        cb = X11Clipboard(settle_ms=0)
+        err = subprocess.CalledProcessError(1, "xclip")
+
+        def _run(args: list[str], **kwargs: object) -> MagicMock:
+            if args[0] == "xclip":
+                raise err
+            return MagicMock(returncode=0)
+
+        with (
+            patch("subprocess.run", side_effect=_run),
+            pytest.raises(RuntimeError, match="xclip"),
+        ):
+            cb.copy_selection()
+
+    def test_copy_selection_returns_empty_for_empty_selection(self) -> None:
+        """xclip read succeeds but clipboard is empty -> '' (not a failure)."""
+        cb = X11Clipboard(settle_ms=0)
+
+        def _run(args: list[str], **kwargs: object) -> MagicMock:
+            if args[0] == "xclip":
+                return MagicMock(stdout="", returncode=0)
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=_run):
+            assert cb.copy_selection() == ""
 
     def test_copy_selection_raises_when_xdotool_missing(self) -> None:
         cb = X11Clipboard(settle_ms=0)

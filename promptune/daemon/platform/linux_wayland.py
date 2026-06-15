@@ -393,16 +393,21 @@ class WaylandClipboard(ClipboardBackend):
         self._settle_ms = settle_ms
 
     def read(self) -> str | None:
+        """Best-effort read; returns None if wl-paste is missing/fails."""
         try:
-            result = subprocess.run(
-                ["wl-paste", "--no-newline"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.replace("\x00", "")
+            return self._read()
         except Exception:
             return None
+
+    def _read(self) -> str:
+        """Read the clipboard, raising if wl-paste is missing or fails."""
+        result = subprocess.run(
+            ["wl-paste", "--no-newline"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.replace("\x00", "")
 
     def write(self, text: str) -> None:
         try:
@@ -449,7 +454,21 @@ class WaylandClipboard(ClipboardBackend):
                 "is ydotoold running?"
             ) from exc
         time.sleep(self._settle_ms / 1000.0)
-        return self.read()
+        # A read-tool failure (wl-paste missing/broken) must raise so the
+        # daemon reports the broken copy tool, not "No text selected" — the
+        # latter is reserved for a genuinely empty selection.
+        try:
+            return self._read()
+        except FileNotFoundError as exc:
+            _log.error("wl-paste not found — install wl-clipboard")
+            raise RuntimeError(
+                "wl-paste not found; install the 'wl-clipboard' package"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            _log.error("wl-paste read failed (exit %s)", exc.returncode)
+            raise RuntimeError(
+                f"wl-paste read failed (exit {exc.returncode})"
+            ) from exc
 
     def paste_result(self, text: str) -> bool:
         # write() raises with a clear message if wl-copy is missing/fails, so

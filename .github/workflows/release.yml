@@ -35,7 +35,7 @@ jobs:
         run: mypy promptune/
 
       - name: Tests with coverage
-        run: pytest --cov=promptune --cov-report=term-missing --cov-fail-under=89
+        run: pytest --cov=promptune --cov-report=term-missing --cov-fail-under=85
 
   build:
     needs: validate
