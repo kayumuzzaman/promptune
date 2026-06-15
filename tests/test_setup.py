@@ -784,6 +784,62 @@ class TestRunInteractiveSetup:
         assert result["api_keys"]["claude"] == ""
         assert result["enhancement"]["max_tier"] == 1
 
+    def test_blank_key_clamps_advanced_tier_with_other_provider_key(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[provider]\ndefault = "openai"\n\n'
+            '[api_keys]\nopenai = "sk-existing"\n\n'
+            "[enhancement]\nmax_tier = 2\n"
+        )
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "",
+                    "claude-haiku-4-5-20251001",
+                    "balanced",
+                    2,
+                    "auto",
+                ],
+            ),
+            patch("click.confirm", side_effect=[True, False]),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        assert result["api_keys"]["claude"] == ""
+        assert result["enhancement"]["max_tier"] == 1
+
+    def test_existing_key_preserves_tier_when_advanced_skipped(
+        self, tmp_path: Path, mock_registry: ProviderRegistry
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[provider]\ndefault = "claude"\n\n'
+            '[api_keys]\nclaude = "sk-ant-existing"\n\n'
+            "[enhancement]\nmax_tier = 0\n"
+        )
+        with (
+            patch(
+                "click.prompt",
+                side_effect=[
+                    "claude",
+                    "sk-ant-existing",
+                    "claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch("click.confirm", return_value=False),
+            patch("click.echo"),
+            patch("promptune.setup.detect_tools", return_value=[]),
+        ):
+            result = run_interactive_setup(config_path, mock_registry)
+        assert result["enhancement"]["max_tier"] == 0
+
 
 class TestWriteConfigEdgeCases:
     """Edge cases for config writing."""

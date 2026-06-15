@@ -273,6 +273,22 @@ def _prompt_optional_settings(
     }, True
 
 
+def _default_max_tier_for_key_state(
+    existing_tier: int, api_key: str, existing_key: str
+) -> int:
+    if not api_key:
+        return min(existing_tier, 1)
+    if existing_key:
+        return existing_tier
+    return 2
+
+
+def _max_tier_for_key_state(requested_tier: int, api_key: str) -> int:
+    if not api_key:
+        return min(requested_tier, 1)
+    return requested_tier
+
+
 def _prompt_auto_enhance_settings() -> dict[str, Any] | None:
     """Detect AI tools and offer auto-enhance hook installation.
 
@@ -346,11 +362,16 @@ def run_interactive_setup(
 
     # Optional: advanced settings
     click.echo()
+    max_tier_default = _default_max_tier_for_key_state(
+        existing["enhancement"]["max_tier"],
+        api_key,
+        existing_key,
+    )
     optional_defaults = {
         "default_mode": existing["enhancement"][
             "default_mode"
         ],
-        "max_tier": existing["enhancement"]["max_tier"],
+        "max_tier": max_tier_default,
         "format_style": existing["provider"]["format_style"],
     }
     optional, advanced_accepted = _prompt_optional_settings(
@@ -373,16 +394,9 @@ def run_interactive_setup(
     config["enhancement"]["default_mode"] = optional[
         "default_mode"
     ]
-    # Derive max_tier from key presence unless the user set it explicitly in
-    # advanced settings: a provided key enables Tier 2 (cloud); a blank key
-    # stays in free mode (Tier 0 rules + Tier 1 local). This keeps the saved
-    # config consistent with what the wizard advertised — load_config's
-    # auto-downgrade only checks whether *any* provider has a key, so without
-    # this a keyless default provider could still be left at Tier 2.
-    if advanced_accepted:
-        config["enhancement"]["max_tier"] = optional["max_tier"]
-    else:
-        config["enhancement"]["max_tier"] = 2 if api_key else 1
+    config["enhancement"]["max_tier"] = _max_tier_for_key_state(
+        optional["max_tier"], api_key
+    )
     config["provider"]["format_style"] = optional[
         "format_style"
     ]
