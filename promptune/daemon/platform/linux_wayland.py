@@ -161,30 +161,42 @@ class WaylandHotkey(HotkeyBackend):
             if not isinstance(session_handle, str) or not session_handle:
                 session_handle = self._portal_session_handle(bus, session_token)
 
-            bind_token = f"promptune_bind_{os.getpid()}"
-            bind_request_path = self._portal_request_path(bus, bind_token)
-            bind_response = self._watch_portal_response(bus, bind_request_path)
-            await self._add_portal_match(bus, bind_request_path)
-            await shortcuts.call_bind_shortcuts(
-                session_handle,
-                [
-                    (
-                        "promptune-enhance",
-                        {
-                            "description": _portal_variant("s", "Enhance prompt"),
-                        },
+            # A persisted GlobalShortcuts session can already carry our binding
+            # from a previous run. BindShortcuts is a one-shot operation per
+            # session and may re-prompt the user or be denied, so reuse an
+            # existing promptune-enhance binding when ListShortcuts reports one
+            # and only bind when it is absent.
+            if not await self._portal_shortcut_already_bound(
+                bus, shortcuts, session_handle
+            ):
+                bind_token = f"promptune_bind_{os.getpid()}"
+                bind_request_path = self._portal_request_path(bus, bind_token)
+                bind_response = self._watch_portal_response(bus, bind_request_path)
+                await self._add_portal_match(bus, bind_request_path)
+                await shortcuts.call_bind_shortcuts(
+                    session_handle,
+                    [
+                        (
+                            "promptune-enhance",
+                            {
+                                "description": _portal_variant(
+                                    "s", "Enhance prompt"
+                                ),
+                            },
+                        )
+                    ],
+                    "",
+                    {"handle_token": _portal_variant("s", bind_token)},
+                )
+                bind_results = await self._await_portal_response(
+                    bind_response, bind_request_path
+                )
+                if bind_results is None:
+                    raise RuntimeError(
+                        "Portal BindShortcuts was denied or timed out"
                     )
-                ],
-                "",
-                {"handle_token": _portal_variant("s", bind_token)},
-            )
-            bind_results = await self._await_portal_response(
-                bind_response, bind_request_path
-            )
-            if bind_results is None:
-                raise RuntimeError("Portal BindShortcuts was denied or timed out")
-            if not self._portal_shortcut_bound(bind_results):
-                raise RuntimeError("Portal promptune-enhance was not bound")
+                if not self._portal_shortcut_bound(bind_results):
+                    raise RuntimeError("Portal promptune-enhance was not bound")
 
             def on_activated(
                 session: str, shortcut_id: str, timestamp: int, options: dict
@@ -200,6 +212,30 @@ class WaylandHotkey(HotkeyBackend):
             bus.disconnect()
 
         asyncio.run(_portal_loop())
+
+    async def _portal_shortcut_already_bound(
+        self, bus: object, shortcuts: Any, session_handle: str
+    ) -> bool:
+        """Return True if ListShortcuts reports promptune-enhance is bound.
+
+        Lets a persisted portal session reuse a previously accepted binding
+        instead of calling the one-shot BindShortcuts again. A timeout/denied
+        ListShortcuts (None) is treated as "not bound" so binding is attempted.
+        """
+        list_token = f"promptune_list_{os.getpid()}"
+        list_request_path = self._portal_request_path(bus, list_token)
+        list_response = self._watch_portal_response(bus, list_request_path)
+        await self._add_portal_match(bus, list_request_path)
+        await shortcuts.call_list_shortcuts(
+            session_handle,
+            {"handle_token": _portal_variant("s", list_token)},
+        )
+        list_results = await self._await_portal_response(
+            list_response, list_request_path
+        )
+        return list_results is not None and self._portal_shortcut_bound(
+            list_results
+        )
 
     def _portal_response_value(self, value: object) -> object:
         return getattr(value, "value", value)

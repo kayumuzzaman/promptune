@@ -183,12 +183,18 @@ class TestWaylandHotkey:
             )
             return "/req/create"
 
+        async def _list(session_handle, options):
+            events.append("list")
+            assert session_handle == expected_session_handle
+            return "/req/list"
+
         async def _bind(session_handle, shortcuts_arg, parent, options):
             events.append("bind")
             assert session_handle == expected_session_handle
             return "/req/bind"
 
         shortcuts.call_create_session = _create_session
+        shortcuts.call_list_shortcuts = _list
         shortcuts.call_bind_shortcuts = _bind
 
         proxy = MagicMock(name="proxy")
@@ -226,6 +232,8 @@ class TestWaylandHotkey:
             events.append(f"await:{request_path}")
             if "/promptune_create_" in request_path:
                 return {"session_handle": expected_session_handle}
+            if "/promptune_list_" in request_path:
+                return {"shortcuts": []}  # nothing bound yet -> must bind
             return {"shortcuts": [("promptune-enhance", {})]}
 
         original_watch = hk._watch_portal_response
@@ -258,6 +266,9 @@ class TestWaylandHotkey:
         )
         assert events.index(create_wait) < events.index("create")
         assert events.index(bind_wait) < events.index("bind")
+        # ListShortcuts is consulted after CreateSession and before
+        # BindShortcuts so an existing binding can be reused.
+        assert events.index("create") < events.index("list") < events.index("bind")
 
         # Activated handler was registered and bus disconnected cleanly.
         shortcuts.on_activated.assert_called_once()
@@ -267,6 +278,80 @@ class TestWaylandHotkey:
         on_activated = shortcuts.on_activated.call_args[0][0]
         on_activated("/session", "promptune-enhance", 123, {})
         user_cb.assert_called_once()
+
+    def test_listen_portal_reuses_existing_binding(self, monkeypatch) -> None:
+        """If ListShortcuts already reports promptune-enhance, skip BindShortcuts.
+
+        BindShortcuts is one-shot per session and re-prompts/denies, so a
+        persisted session must reuse the saved binding.
+        """
+        aio_mod = _install_fake_dbus(monkeypatch)
+
+        shortcuts = MagicMock(name="shortcuts")
+        events: list[str] = []
+        session_handle = (
+            "/org/freedesktop/portal/desktop/session/1_42/promptune_session"
+        )
+
+        async def _create_session(options):
+            events.append("create")
+            return "/req/create"
+
+        async def _list(session_handle_arg, options):
+            events.append("list")
+            assert session_handle_arg == session_handle
+            return "/req/list"
+
+        async def _bind(*args, **kwargs):
+            events.append("bind")
+            return "/req/bind"
+
+        shortcuts.call_create_session = _create_session
+        shortcuts.call_list_shortcuts = _list
+        shortcuts.call_bind_shortcuts = _bind
+
+        proxy = MagicMock(name="proxy")
+        proxy.get_interface.return_value = shortcuts
+
+        bus = MagicMock(name="bus")
+        bus.unique_name = ":1.42"
+
+        async def _connect():
+            return bus
+
+        async def _introspect(*args, **kwargs):
+            return MagicMock()
+
+        bus.introspect = MagicMock(side_effect=_introspect)
+        bus.get_proxy_object.return_value = proxy
+        bus.call = MagicMock(
+            side_effect=lambda message: _method_return_response()
+        )
+
+        msgbus_instance = MagicMock()
+        msgbus_instance.connect = MagicMock(side_effect=lambda: _connect())
+        aio_mod.MessageBus.return_value = msgbus_instance
+
+        user_cb = MagicMock()
+        hk = WaylandHotkey()
+        hk.register("ctrl+shift+e", user_cb)
+        hk.stop()
+
+        async def _response(*args, **kwargs):
+            request_path = str(args[-1])
+            if "/promptune_create_" in request_path:
+                return {"session_handle": session_handle}
+            # ListShortcuts already reports our shortcut as bound.
+            return {"shortcuts": [("promptune-enhance", {})]}
+
+        with (
+            patch.object(hk, "_await_portal_response", side_effect=_response),
+        ):
+            hk._listen_portal()
+
+        assert "list" in events
+        assert "bind" not in events  # existing binding reused, not rebound
+        shortcuts.on_activated.assert_called_once()
 
     def test_listen_portal_raises_when_create_session_denied(
         self, monkeypatch
@@ -327,11 +412,15 @@ class TestWaylandHotkey:
         async def _create_session(options):
             return "/req/create"
 
+        async def _list(session_handle_arg, options):
+            return "/req/list"
+
         async def _bind(session_handle_arg, shortcuts_arg, parent, options):
             assert session_handle_arg == session_handle
             return "/req/bind"
 
         shortcuts.call_create_session = _create_session
+        shortcuts.call_list_shortcuts = _list
         shortcuts.call_bind_shortcuts = _bind
 
         proxy = MagicMock(name="proxy")
@@ -364,6 +453,8 @@ class TestWaylandHotkey:
             request_path = str(args[-1])
             if "/promptune_create_" in request_path:
                 return {"session_handle": session_handle}
+            if "/promptune_list_" in request_path:
+                return {"shortcuts": []}  # not bound yet -> must attempt bind
             return None
 
         with (
@@ -389,11 +480,15 @@ class TestWaylandHotkey:
         async def _create_session(options):
             return "/req/create"
 
+        async def _list(session_handle_arg, options):
+            return "/req/list"
+
         async def _bind(session_handle_arg, shortcuts_arg, parent, options):
             assert session_handle_arg == session_handle
             return "/req/bind"
 
         shortcuts.call_create_session = _create_session
+        shortcuts.call_list_shortcuts = _list
         shortcuts.call_bind_shortcuts = _bind
 
         proxy = MagicMock(name="proxy")
@@ -426,6 +521,8 @@ class TestWaylandHotkey:
             request_path = str(args[-1])
             if "/promptune_create_" in request_path:
                 return {"session_handle": session_handle}
+            if "/promptune_list_" in request_path:
+                return {"shortcuts": []}  # not bound yet -> must attempt bind
             return {"shortcuts": bound_shortcuts}
 
         with (
