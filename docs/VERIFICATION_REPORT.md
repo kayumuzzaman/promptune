@@ -10,10 +10,10 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-15 |
-| Branch | feat/linux-daemon-hardening |
+| Branch | feat/linux-daemon-hardening (merged with main) |
 | Python | 3.14.3 |
-| Total Tests | 935 |
-| Test Result | **929 passed, 6 skipped, 0 failed** |
+| Total Tests | 944 |
+| Test Result | **937 passed, 7 linux-only deselected, 0 failed** |
 | Coverage | **97%** (target ≥ 90%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
@@ -93,12 +93,12 @@
 | `promptune/providers/openai.py` | 21 | 1 | 95% | ✅ | |
 | `promptune/providers/openrouter.py` | 29 | 3 | 90% | ✅ | |
 | `promptune/scorer.py` | 250 | 16 | 94% | ✅ | |
-| `promptune/setup.py` | 139 | 5 | 96% | ✅ | +auto_enhance wizard step |
+| `promptune/setup.py` | 161 | 4 | 98% | ✅ | Optional API key + tier resolver |
 | `promptune/shell.py` | 78 | 0 | 100% | ✅ | |
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
 | `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3296** | **94** | **97%** | ✅ | Target: ≥ 90% |
+| **TOTAL** | **3318** | **92** | **97%** | ✅ | Target: ≥ 90% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
