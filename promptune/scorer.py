@@ -12,6 +12,8 @@ import math
 import re
 from dataclasses import dataclass
 
+from promptune.meta_prompt import _keyword_matches
+
 
 @dataclass
 class DimensionScore:
@@ -60,8 +62,8 @@ def _detect_intent(prompt: str) -> str:
     scores: dict[str, int] = {k: 0 for k in _INTENT_KEYWORDS}
     for intent, keywords in _INTENT_KEYWORDS.items():
         for kw in keywords:
-            # Allow a regular plural so "tests" still counts as "test".
-            if re.search(rf"\b{re.escape(kw)}s?\b", lower):
+            # Shared matcher accepts inflections ("tests", "debugging", ...).
+            if _keyword_matches(lower, kw):
                 scores[intent] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"

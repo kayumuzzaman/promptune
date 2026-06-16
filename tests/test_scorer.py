@@ -14,6 +14,12 @@ def test_detect_intent_matches_regular_plurals() -> None:
     assert _detect_intent("add api endpoints") == "coding"
 
 
+def test_detect_intent_matches_verb_inflections() -> None:
+    """Scorer shares the inflection-aware matcher (debugging/classes/...)."""
+    assert _detect_intent("debugging the parser") == "coding"
+    assert _detect_intent("write classes for the model") == "coding"
+
+
 def test_score_result_dataclass() -> None:
     """ScoreResult has required fields."""
     result = ScoreResult(

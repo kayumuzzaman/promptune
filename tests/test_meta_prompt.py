@@ -60,6 +60,26 @@ def test_detect_intent_matches_regular_plurals() -> None:
 
     assert detect_intent("write tests") == "coding"
     assert detect_intent("add api endpoints") == "coding"
+
+
+def test_detect_intent_matches_verb_inflections() -> None:
+    """-ing/-ed/-es inflections count, incl. consonant doubling."""
+    from promptune.meta_prompt import detect_intent
+
+    assert detect_intent("debugging the parser") == "coding"
+    assert detect_intent("refactoring the module") == "coding"
+    assert detect_intent("write classes for the model") == "coding"
+
+
+def test_keyword_match_stays_anchored() -> None:
+    """Inflection support must not reintroduce substring false positives."""
+    from promptune.meta_prompt import _keyword_matches
+
+    assert _keyword_matches("write tests", "test")
+    assert _keyword_matches("debugging now", "debug")
+    # "api" must not match inside "rapidly"; "app" not inside "approach".
+    assert not _keyword_matches("rapidly iterate", "api")
+    assert not _keyword_matches("a new approach", "app")
     assert detect_intent("build a REST api endpoint") == "coding"
 
 

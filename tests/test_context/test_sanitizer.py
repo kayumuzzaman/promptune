@@ -116,3 +116,22 @@ def test_sanitize_secret_at_start_of_segment() -> None:
     result = sanitize(text)
     assert text not in result
     assert "[REDACTED]" in result
+
+
+def test_sanitize_preserves_camelcase_source_paths() -> None:
+    """A normal source path with a long CamelCase filename isn't redacted."""
+    text = (
+        "modified_files=packages/frontend/src/"
+        "CheckoutExperienceManager.tsx"
+    )
+    result = sanitize(text)
+    assert "CheckoutExperienceManager.tsx" in result
+    assert "[REDACTED]" not in result
+
+
+def test_sanitize_still_redacts_secret_next_to_a_path() -> None:
+    """Dropping '/' from the token scan must not let secrets slip through."""
+    text = "see config/app.py token sk-ant-abc123xyz456def"
+    result = sanitize(text)
+    assert "sk-ant-abc123xyz456def" not in result
+    assert "[REDACTED]" in result

@@ -33,7 +33,10 @@ _KEYWORD_PATTERNS: list[re.Pattern[str]] = [
     ),
 ]
 
-_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+/_-]{20,}={0,2}")
+# Path separators are excluded so a long path like
+# "packages/frontend/src/CheckoutExperienceManager" isn't scanned as one
+# high-entropy token and redacted; each segment is judged on its own.
+_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+_-]{20,}={0,2}")
 
 _REDACTED = "[REDACTED]"
 
