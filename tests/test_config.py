@@ -421,7 +421,10 @@ def test_loaded_config_includes_daemon_defaults(tmp_path: Path) -> None:
 
 def test_generate_default_config_round_trips() -> None:
     """Generated TOML parses back to the full DEFAULT_CONFIG."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11
+        import tomli as tomllib
 
     from promptune.config import DEFAULT_CONFIG, generate_default_config
 

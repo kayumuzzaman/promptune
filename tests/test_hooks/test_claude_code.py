@@ -188,6 +188,21 @@ class TestClaudeCodeInstall:
         installer = ClaudeCodeInstaller()
         installer.uninstall()  # should not raise
 
+    def test_uninstall_leaves_malformed_dict_config_untouched(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A dict-shaped UserPromptSubmit must not be rewritten into a list."""
+        settings_path = tmp_path / "settings.json"
+        original = {"hooks": {"UserPromptSubmit": {"matcher": "", "hooks": []}}}
+        settings_path.write_text(json.dumps(original))
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        installer.uninstall()
+        assert json.loads(settings_path.read_text()) == original
+
     def test_install_idempotent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

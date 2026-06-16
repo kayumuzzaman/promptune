@@ -390,10 +390,14 @@ def start_daemon(
             host = local_cfg.get("host", "http://localhost:11434")
             model = local_cfg.get("model", "qwen2.5:3b")
             keepalive_minutes = daemon_cfg.get("ollama_keepalive_minutes", 30)
+            # Ping before the keep-alive lapses: the repeating timer waits the
+            # interval *after* each ping, so an equal interval lets scheduling
+            # drift unload the model. Stay a margin under the keep-alive.
+            interval_minutes = max(1, int(keepalive_minutes) - 5)
             prewarm_timer = start_prewarm_timer(
                 host,
                 model,
-                interval_minutes=keepalive_minutes,
+                interval_minutes=interval_minutes,
                 keepalive=f"{int(keepalive_minutes)}m",
             )
             _log.info("Ollama prewarm started for %s at %s", model, host)

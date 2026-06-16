@@ -74,7 +74,9 @@ class CodexInstaller:
         entries = data.get("hooks", {}).get(
             "UserPromptSubmit", []
         )
-        if not entries:
+        if not isinstance(entries, list) or not entries:
+            # Leave a missing or malformed (non-list) config untouched rather
+            # than rewriting it into a list of dict keys.
             return
         data.setdefault("hooks", {})["UserPromptSubmit"] = [
             entry
@@ -91,8 +93,15 @@ class CodexInstaller:
         _save_hooks(data)
 
     def is_installed(self) -> bool:
-        """Return True if promptune hook is in hooks.json."""
-        data = _load_hooks()
+        """Return True if promptune hook is in hooks.json.
+
+        Read-only status check: a corrupt hooks.json means "not installed"
+        rather than an error, so ``promptune doctor`` doesn't abort.
+        """
+        try:
+            data = _load_hooks()
+        except HookConfigError:
+            return False
         entries = data.get("hooks", {}).get(
             "UserPromptSubmit", []
         )

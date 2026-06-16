@@ -72,7 +72,9 @@ class ClaudeCodeInstaller:
         entries = data.get("hooks", {}).get(
             "UserPromptSubmit", []
         )
-        if not entries:
+        if not isinstance(entries, list) or not entries:
+            # Leave a missing or malformed (non-list) config untouched rather
+            # than rewriting it into a list of dict keys.
             return
         data.setdefault("hooks", {})["UserPromptSubmit"] = [
             entry

@@ -139,6 +139,34 @@ class TestCodexInstall:
         installer = CodexInstaller()
         installer.uninstall()  # should not raise
 
+    def test_is_installed_tolerates_corrupt_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Read-only status check returns False on corrupt JSON, not raises."""
+        hooks_path = tmp_path / "hooks.json"
+        hooks_path.write_text("{ broken json")
+        monkeypatch.setattr(
+            "promptune.hooks.codex.HOOKS_PATH",
+            hooks_path,
+        )
+        installer = CodexInstaller()
+        assert installer.is_installed() is False
+
+    def test_uninstall_leaves_malformed_dict_config_untouched(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A dict-shaped UserPromptSubmit must not be rewritten into a list."""
+        hooks_path = tmp_path / "hooks.json"
+        original = {"hooks": {"UserPromptSubmit": {"matcher": "", "hooks": []}}}
+        hooks_path.write_text(json.dumps(original))
+        monkeypatch.setattr(
+            "promptune.hooks.codex.HOOKS_PATH",
+            hooks_path,
+        )
+        installer = CodexInstaller()
+        installer.uninstall()
+        assert json.loads(hooks_path.read_text()) == original
+
     def test_install_idempotent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

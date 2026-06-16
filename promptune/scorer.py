@@ -60,7 +60,8 @@ def _detect_intent(prompt: str) -> str:
     scores: dict[str, int] = {k: 0 for k in _INTENT_KEYWORDS}
     for intent, keywords in _INTENT_KEYWORDS.items():
         for kw in keywords:
-            if re.search(rf"\b{re.escape(kw)}\b", lower):
+            # Allow a regular plural so "tests" still counts as "test".
+            if re.search(rf"\b{re.escape(kw)}s?\b", lower):
                 scores[intent] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"

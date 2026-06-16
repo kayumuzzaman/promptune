@@ -1,6 +1,17 @@
 """Quality Scorer tests."""
 
-from promptune.scorer import DimensionScore, ScoreResult, score_prompt
+from promptune.scorer import (
+    DimensionScore,
+    ScoreResult,
+    _detect_intent,
+    score_prompt,
+)
+
+
+def test_detect_intent_matches_regular_plurals() -> None:
+    """Plural coding keywords still count (e.g. 'tests' -> 'test')."""
+    assert _detect_intent("write tests") == "coding"
+    assert _detect_intent("add api endpoints") == "coding"
 
 
 def test_score_result_dataclass() -> None:
