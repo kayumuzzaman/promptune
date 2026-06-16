@@ -58,8 +58,8 @@ class MacOSClipboard(ClipboardBackend):
     def copy_selection(self) -> str | None:
         return clip_mod.copy_selection()
 
-    def paste_result(self, text: str) -> None:
-        clip_mod.paste_result(text)
+    def paste_result(self, text: str) -> bool:
+        return clip_mod.paste_result(text)
 
 
 class MacOSNotify(NotifyBackend):

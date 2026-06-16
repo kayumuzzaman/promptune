@@ -135,14 +135,16 @@ def copy_selection() -> str | None:
     return save_clipboard()
 
 
-def paste_result(text: str) -> None:
+def paste_result(text: str) -> bool:
     """Write *text* to the clipboard and then trigger a paste.
 
     Writes the text, waits for the clipboard to settle, then simulates Cmd+V.
+    Returns ``True`` once the paste keystroke has been dispatched.
     """
     write_clipboard(text)
     time.sleep(CLIPBOARD_SETTLE_MS / 1000.0)
     simulate_cmd_v()
+    return True
 
 
 # ---------------------------------------------------------------------------

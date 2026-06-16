@@ -154,8 +154,27 @@ def _on_hotkey(
     try:
         app_before = platform.active_window.get_frontmost_app()
         original_clipboard = platform.clipboard.read()
-        selected_text = platform.clipboard.copy_selection()
 
+        # copy_selection raises when the copy tool is missing/broken, and
+        # returns None/empty only for a genuinely empty selection. Keep these
+        # distinct so we don't tell the user "no text selected" when the real
+        # problem is a missing xdotool/ydotool.
+        try:
+            selected_text = platform.clipboard.copy_selection()
+        except Exception:
+            _log.exception("Copy tool failed")
+            platform.notify.send(
+                "Promptune",
+                "Couldn't read selection — copy tool (xdotool/ydotool) "
+                "missing or broken.",
+                sound=False,
+            )
+            return
+
+        # copy_selection() clears the clipboard before the copy keystroke, so
+        # a falsy result means nothing was actually selected (the backend has
+        # already restored the prior clipboard); a stale value can no longer
+        # masquerade as a selection here.
         if not selected_text:
             platform.notify.send(
                 "Promptune", "No text selected. Select text first.", sound=False
@@ -184,21 +203,50 @@ def _on_hotkey(
 
         app_after = platform.active_window.get_frontmost_app()
 
-        if app_after == app_before:
-            platform.clipboard.paste_result(result.enhanced)
-            delta = result.score_after.total - result.score_before.total
-            sign = "+" if delta >= 0 else ""
+        # Clipboard delivery can fail when system tools are missing
+        # (xclip/xdotool, wl-clipboard/ydotool). Backends signal this by
+        # raising; catch it here so the hotkey thread never dies silently
+        # and the user always gets feedback.
+        try:
+            # Only auto-paste when the focused window is known AND unchanged.
+            # Linux active-window detection often degrades to "" (locked-down
+            # GNOME Shell.Eval, unsupported desktops); treating "" == "" as
+            # "same window" would inject the prompt into whatever is focused
+            # now — possibly the wrong app. Unknown focus -> clipboard only.
+            if app_before and app_after and app_after == app_before:
+                injected = platform.clipboard.paste_result(result.enhanced)
+                if injected:
+                    delta = result.score_after.total - result.score_before.total
+                    sign = "+" if delta >= 0 else ""
+                    platform.notify.send(
+                        "Promptune",
+                        f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
+                    )
+                else:
+                    # Write succeeded but the paste keystroke didn't inject \u2014
+                    # the text is on the clipboard, so tell the user to paste.
+                    platform.notify.send(
+                        "Promptune",
+                        "Enhanced text on clipboard \u2014 paste manually "
+                        "(Ctrl+V).",
+                        sound=False,
+                    )
+            else:
+                platform.clipboard.write(result.enhanced)
+                platform.notify.send(
+                    "Promptune",
+                    "Enhanced text in clipboard \u2014 paste manually.",
+                    sound=False,
+                )
+        except Exception:
+            _log.exception("Failed to deliver enhanced text")
             platform.notify.send(
                 "Promptune",
-                f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
-            )
-        else:
-            platform.clipboard.write(result.enhanced)
-            platform.notify.send(
-                "Promptune",
-                "Enhanced text in clipboard \u2014 paste manually.",
+                "Enhancement ready but clipboard/paste failed \u2014 check "
+                "clipboard tools (xclip/wl-clipboard) are installed.",
                 sound=False,
             )
+            return
 
         with state.lock:
             state.enhancement_count += 1

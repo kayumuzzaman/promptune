@@ -9,13 +9,15 @@ Notifications: notify-send.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import os
 import subprocess
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from promptune.daemon.platform.base import (
     ActiveWindowBackend,
@@ -27,13 +29,25 @@ from promptune.daemon.platform.base import (
 _log = logging.getLogger(__name__)
 
 
+def _portal_variant(signature: str, value: object) -> object:
+    """Wrap *value* in a ``dbus_next.Variant`` for an ``a{sv}`` portal option.
+
+    Imported lazily so the module stays importable where ``dbus_next`` is not
+    installed (e.g. macOS development / CI).
+    """
+    from dbus_next import Variant  # type: ignore[import]
+
+    return Variant(signature, value)
+
+
 class WaylandHotkey(HotkeyBackend):
     """Wayland hotkey via portal GlobalShortcuts, with evdev fallback."""
 
-    def __init__(self) -> None:
+    def __init__(self, portal_timeout: float = 5.0) -> None:
         self._stop_event = threading.Event()
         self._callback: Callable[[], None] | None = None
         self._combo = ""
+        self._portal_timeout = portal_timeout
 
     def register(self, combo: str, callback: Callable[[], None]) -> None:
         self._callback = callback
@@ -46,11 +60,31 @@ class WaylandHotkey(HotkeyBackend):
         try:
             self._listen_portal()
         except Exception:
-            _log.info("Portal GlobalShortcuts unavailable, falling back to evdev")
+            _log.info(
+                "Portal GlobalShortcuts unavailable or handshake failed, "
+                "falling back to evdev",
+                exc_info=True,
+            )
             try:
                 self._listen_evdev()
             except Exception:
                 _log.error("Both portal and evdev hotkey failed", exc_info=True)
+
+    def _portal_sender_id(self, bus: object) -> str:
+        unique_name = getattr(bus, "unique_name", "")
+        if callable(unique_name):
+            unique_name = unique_name()
+        if not unique_name:
+            raise RuntimeError("D-Bus unique name unavailable")
+        return str(unique_name).lstrip(":").replace(".", "_")
+
+    def _portal_request_path(self, bus: object, token: str) -> str:
+        sender = self._portal_sender_id(bus)
+        return f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+
+    def _portal_session_handle(self, bus: object, token: str) -> str:
+        sender = self._portal_sender_id(bus)
+        return f"/org/freedesktop/portal/desktop/session/{sender}/{token}"
 
     def _listen_portal(self) -> None:
         # TODO(linux-ci): Integration test requires a running xdg-desktop-portal
@@ -60,8 +94,23 @@ class WaylandHotkey(HotkeyBackend):
         #   2. Mock portal signals or use a test portal stub
         #   3. Send a synthetic D-Bus Activated signal and assert callback fires
         # See tests/test_daemon/test_platform/test_linux_wayland_integration.py
-        import asyncio
-
+        #
+        # PORTAL FLOW (org.freedesktop.portal.GlobalShortcuts):
+        #   CreateSession(a{sv}) and BindShortcuts(...) do NOT return their
+        #   results directly — they return an org.freedesktop.portal.Request
+        #   object path, and the actual result (response code 0 == success
+        #   plus a{sv} of results) arrives asynchronously via that Request's
+        #   ``Response`` signal.  The real *session handle* is derived from the
+        #   ``session_handle_token`` we pass in the CreateSession options; the
+        #   portal echoes it back in the Response results, which we await here.
+        #
+        #   The previous implementation treated the CreateSession return value
+        #   (a Request handle) as the session handle, which is incorrect and
+        #   meant BindShortcuts was always called with the wrong object path.
+        #   This is fixed below.  This code path cannot be exercised without a
+        #   live portal (no Wayland hardware on macOS CI); it is covered by
+        #   mocked unit tests and a real-portal integration test marked
+        #   @pytest.mark.linux.
         from dbus_next.aio import MessageBus  # type: ignore[import]
 
         async def _portal_loop() -> None:
@@ -78,14 +127,76 @@ class WaylandHotkey(HotkeyBackend):
             shortcuts = proxy.get_interface(
                 "org.freedesktop.portal.GlobalShortcuts"
             )
-            result = await shortcuts.call_create_session({})
-            session_handle = result
-            await shortcuts.call_bind_shortcuts(
-                session_handle,
-                [("promptune-enhance", {"description": "Enhance prompt"})],
-                "",
-                {},
+
+            # Stable session token: GlobalShortcuts portals persist bindings by
+            # session handle, so reusing one token across restarts lets a
+            # previously-bound shortcut be reused instead of re-prompting each
+            # launch. Per-request handle tokens stay unique (pid-based).
+            session_token = "promptune_session"
+            create_token = f"promptune_create_{os.getpid()}"
+            create_request_path = self._portal_request_path(bus, create_token)
+            create_response = self._watch_portal_response(
+                bus, create_request_path
             )
+            await self._add_portal_match(bus, create_request_path)
+
+            # CreateSession returns a Request handle, not the session handle.
+            # The session only becomes valid once the portal confirms it; we
+            # subscribe to the Request response before issuing the call so a
+            # fast portal response cannot be missed.
+            await shortcuts.call_create_session(
+                {
+                    "handle_token": _portal_variant("s", create_token),
+                    "session_handle_token": _portal_variant("s", session_token),
+                }
+            )
+            create_results = await self._await_portal_response(
+                create_response, create_request_path
+            )
+            if create_results is None:
+                raise RuntimeError("Portal CreateSession was denied or timed out")
+            session_handle = self._portal_response_value(
+                create_results.get("session_handle")
+            )
+            if not isinstance(session_handle, str) or not session_handle:
+                session_handle = self._portal_session_handle(bus, session_token)
+
+            # A persisted GlobalShortcuts session can already carry our binding
+            # from a previous run. BindShortcuts is a one-shot operation per
+            # session and may re-prompt the user or be denied, so reuse an
+            # existing promptune-enhance binding when ListShortcuts reports one
+            # and only bind when it is absent.
+            if not await self._portal_shortcut_already_bound(
+                bus, shortcuts, session_handle
+            ):
+                bind_token = f"promptune_bind_{os.getpid()}"
+                bind_request_path = self._portal_request_path(bus, bind_token)
+                bind_response = self._watch_portal_response(bus, bind_request_path)
+                await self._add_portal_match(bus, bind_request_path)
+                await shortcuts.call_bind_shortcuts(
+                    session_handle,
+                    [
+                        (
+                            "promptune-enhance",
+                            {
+                                "description": _portal_variant(
+                                    "s", "Enhance prompt"
+                                ),
+                            },
+                        )
+                    ],
+                    "",
+                    {"handle_token": _portal_variant("s", bind_token)},
+                )
+                bind_results = await self._await_portal_response(
+                    bind_response, bind_request_path
+                )
+                if bind_results is None:
+                    raise RuntimeError(
+                        "Portal BindShortcuts was denied or timed out"
+                    )
+                if not self._portal_shortcut_bound(bind_results):
+                    raise RuntimeError("Portal promptune-enhance was not bound")
 
             def on_activated(
                 session: str, shortcut_id: str, timestamp: int, options: dict
@@ -101,6 +212,118 @@ class WaylandHotkey(HotkeyBackend):
             bus.disconnect()
 
         asyncio.run(_portal_loop())
+
+    async def _portal_shortcut_already_bound(
+        self, bus: object, shortcuts: Any, session_handle: str
+    ) -> bool:
+        """Return True if ListShortcuts reports promptune-enhance is bound.
+
+        Lets a persisted portal session reuse a previously accepted binding
+        instead of calling the one-shot BindShortcuts again. A timeout/denied
+        ListShortcuts (None) is treated as "not bound" so binding is attempted.
+        """
+        list_token = f"promptune_list_{os.getpid()}"
+        list_request_path = self._portal_request_path(bus, list_token)
+        list_response = self._watch_portal_response(bus, list_request_path)
+        await self._add_portal_match(bus, list_request_path)
+        await shortcuts.call_list_shortcuts(
+            session_handle,
+            {"handle_token": _portal_variant("s", list_token)},
+        )
+        list_results = await self._await_portal_response(
+            list_response, list_request_path
+        )
+        return list_results is not None and self._portal_shortcut_bound(
+            list_results
+        )
+
+    def _portal_response_value(self, value: object) -> object:
+        return getattr(value, "value", value)
+
+    def _portal_shortcut_bound(self, results: dict[str, Any]) -> bool:
+        shortcuts = self._portal_response_value(results.get("shortcuts"))
+        if not isinstance(shortcuts, list):
+            return False
+        for shortcut in shortcuts:
+            item = self._portal_response_value(shortcut)
+            if not isinstance(item, (tuple, list)) or not item:
+                continue
+            shortcut_id = self._portal_response_value(item[0])
+            if shortcut_id == "promptune-enhance":
+                return True
+        return False
+
+    async def _add_portal_match(self, bus: object, request_path: str) -> None:
+        from dbus_next import Message  # type: ignore[import]
+        from dbus_next.constants import MessageType  # type: ignore[import]
+
+        rule = (
+            "type='signal',"
+            "sender='org.freedesktop.portal.Desktop',"
+            "interface='org.freedesktop.portal.Request',"
+            "member='Response',"
+            f"path='{request_path}'"
+        )
+        reply = await bus.call(  # type: ignore[attr-defined]
+            Message(
+                destination="org.freedesktop.DBus",
+                path="/org/freedesktop/DBus",
+                member="AddMatch",
+                signature="s",
+                body=[rule],
+            )
+        )
+        if getattr(reply, "message_type", None) != MessageType.METHOD_RETURN:
+            raise RuntimeError("Failed to add portal response match rule")
+
+    def _watch_portal_response(
+        self, bus: object, request_path: str
+    ) -> asyncio.Future[dict[str, Any] | None]:
+        from dbus_next.constants import MessageType  # type: ignore[import]
+
+        loop = asyncio.get_event_loop()
+        done: asyncio.Future[dict[str, Any] | None] = loop.create_future()
+
+        def on_message(message: object) -> None:
+            if done.done():
+                return
+            if getattr(message, "message_type", None) != MessageType.SIGNAL:
+                return
+            if getattr(message, "path", None) != request_path:
+                return
+            if (
+                getattr(message, "interface", None)
+                != "org.freedesktop.portal.Request"
+            ):
+                return
+            if getattr(message, "member", None) != "Response":
+                return
+            body = getattr(message, "body", [])
+            if len(body) < 2:
+                done.set_result(None)
+                return
+            response, results = body[0], body[1]
+            done.set_result(results if response == 0 else None)
+
+        bus.add_message_handler(on_message)  # type: ignore[attr-defined]
+
+        def cleanup(_future: asyncio.Future[dict[str, Any] | None]) -> None:
+            with contextlib.suppress(Exception):
+                bus.remove_message_handler(on_message)  # type: ignore[attr-defined]
+
+        done.add_done_callback(cleanup)
+        return done
+
+    async def _await_portal_response(
+        self,
+        response: asyncio.Future[dict[str, Any] | None],
+        request_path: str,
+    ) -> dict[str, Any] | None:
+        try:
+            return await asyncio.wait_for(response, timeout=self._portal_timeout)
+        except asyncio.TimeoutError:
+            _log.warning("Portal request %s timed out", request_path)
+            return None
 
     def _listen_evdev(self) -> None:
         # TODO(linux-ci): Integration test requires the 'input' group membership
@@ -125,24 +348,7 @@ class WaylandHotkey(HotkeyBackend):
         if not keyboards:
             raise RuntimeError("No keyboard input devices found")
 
-        combo_parts = [p.strip().lower() for p in self._combo.split("+")]
-        evdev_keys = {
-            "ctrl": ecodes.KEY_LEFTCTRL,
-            "shift": ecodes.KEY_LEFTSHIFT,
-            "alt": ecodes.KEY_LEFTALT,
-            "super": ecodes.KEY_LEFTMETA,
-        }
-        mod_keys = set()
-        main_key = None
-        for part in combo_parts:
-            if part in evdev_keys:
-                mod_keys.add(evdev_keys[part])
-            else:
-                key_attr = f"KEY_{part.upper()}"
-                main_key = getattr(ecodes, key_attr, None)
-
-        if main_key is None:
-            raise ValueError(f"Cannot map key from combo: {self._combo}")
+        main_key, mod_groups = self._parse_evdev_combo(ecodes)
 
         pressed: set[int] = set()
         import select
@@ -160,57 +366,204 @@ class WaylandHotkey(HotkeyBackend):
                         pressed.discard(key_event.scancode)
                     if (
                         main_key in pressed
-                        and mod_keys.issubset(pressed)
+                        and all(
+                            group & pressed for group in mod_groups
+                        )
                         and self._callback
                     ):
                         self._callback()
                         pressed.clear()
+
+    def _parse_evdev_combo(
+        self, ecodes: object
+    ) -> tuple[int, list[set[int]]]:
+        """Parse ``self._combo`` into (main_key, list-of-modifier-groups).
+
+        Each modifier maps to a *group* of acceptable scancodes (left and
+        right variants) so e.g. right-ctrl satisfies a ``ctrl`` requirement.
+        Raises ValueError if the non-modifier key cannot be mapped.
+        """
+        modifier_groups = {
+            "ctrl": ("KEY_LEFTCTRL", "KEY_RIGHTCTRL"),
+            "shift": ("KEY_LEFTSHIFT", "KEY_RIGHTSHIFT"),
+            "alt": ("KEY_LEFTALT", "KEY_RIGHTALT"),
+            "super": ("KEY_LEFTMETA", "KEY_RIGHTMETA"),
+        }
+        mod_groups: list[set[int]] = []
+        main_key: int | None = None
+        for part in (p.strip().lower() for p in self._combo.split("+")):
+            if not part:
+                continue
+            if part in modifier_groups:
+                group = {
+                    getattr(ecodes, attr)
+                    for attr in modifier_groups[part]
+                    if getattr(ecodes, attr, None) is not None
+                }
+                mod_groups.append(group)
+            else:
+                main_key = getattr(ecodes, f"KEY_{part.upper()}", None)
+
+        if main_key is None:
+            raise ValueError(f"Cannot map key from combo: {self._combo}")
+        return main_key, mod_groups
 
     def stop(self) -> None:
         self._stop_event.set()
 
 
 class WaylandClipboard(ClipboardBackend):
-    """Wayland clipboard via wl-paste / wl-copy + ydotool."""
+    """Wayland clipboard via wl-paste / wl-copy + ydotool.
+
+    Linux input-event-codes used for ``ydotool key`` (``<keycode>:<state>``):
+      29 = KEY_LEFTCTRL, 46 = KEY_C, 47 = KEY_V
+    (state 1 == press, 0 == release).
+    """
+
+    # Linux input-event-codes (linux/input-event-codes.h)
+    _KEY_LEFTCTRL = 29
+    _KEY_C = 46
+    _KEY_V = 47
 
     def __init__(self, settle_ms: int = 100) -> None:
         self._settle_ms = settle_ms
 
     def read(self) -> str | None:
+        """Best-effort read; returns None if wl-paste is missing/fails."""
         try:
-            result = subprocess.run(
-                ["wl-paste", "--no-newline"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.replace("\x00", "")
+            return self._read()
         except Exception:
             return None
 
-    def write(self, text: str) -> None:
-        subprocess.run(
-            ["wl-copy"],
-            input=text,
+    def _read(self) -> str:
+        """Read the clipboard, raising if wl-paste is missing or fails."""
+        result = subprocess.run(
+            ["wl-paste", "--no-newline"],
+            capture_output=True,
             text=True,
             check=True,
         )
+        return result.stdout.replace("\x00", "")
+
+    def write(self, text: str) -> None:
+        try:
+            subprocess.run(
+                ["wl-copy"],
+                input=text,
+                text=True,
+                check=True,
+            )
+        except FileNotFoundError as exc:
+            _log.error("wl-copy not found — install wl-clipboard")
+            raise RuntimeError(
+                "wl-copy not found; install the 'wl-clipboard' package"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            _log.error("wl-copy failed (exit %s)", exc.returncode)
+            raise RuntimeError("wl-copy failed to write clipboard") from exc
 
     def copy_selection(self) -> str | None:
-        subprocess.run(
-            ["ydotool", "key", "29:1", "46:1", "46:0", "29:0"],
-            check=True,
-        )
-        time.sleep(self._settle_ms / 1000.0)
-        return self.read()
+        # Clear the clipboard before the copy keystroke so a clipboard left
+        # unchanged afterwards (nothing selected, or the app ignored the
+        # keystroke) is distinguishable from a real selection — even one whose
+        # text matches the previous clipboard. Restore the prior value if
+        # nothing was copied so the hotkey never wipes the clipboard.
+        previous = self.read()
+        # Only clear when the prior contents are restorable text. If read()
+        # returned None (non-text payload like an image, or a read failure),
+        # clearing would destroy data we cannot put back — and no text could
+        # masquerade as a selection, so the clear isn't needed for detection.
+        if previous is not None:
+            try:
+                self.write("")  # best-effort clear
+            except Exception:
+                _log.debug("clipboard clear failed", exc_info=True)
+        copied = False
+        try:
+            try:
+                subprocess.run(
+                    [
+                        "ydotool", "key",
+                        f"{self._KEY_LEFTCTRL}:1",
+                        f"{self._KEY_C}:1",
+                        f"{self._KEY_C}:0",
+                        f"{self._KEY_LEFTCTRL}:0",
+                    ],
+                    check=True,
+                )
+            except FileNotFoundError as exc:
+                _log.error(
+                    "ydotool not found — cannot simulate copy; "
+                    "install ydotool and run ydotoold"
+                )
+                raise RuntimeError(
+                    "ydotool not found; install ydotool and run ydotoold "
+                    "to read the selection"
+                ) from exc
+            except subprocess.CalledProcessError as exc:
+                _log.error("ydotool copy failed (exit %s)", exc.returncode)
+                raise RuntimeError(
+                    f"ydotool copy failed (exit {exc.returncode}); "
+                    "is ydotoold running?"
+                ) from exc
+            time.sleep(self._settle_ms / 1000.0)
+            # A read-tool failure (wl-paste missing/broken) must raise so the
+            # daemon reports the broken copy tool, not "No text selected" —
+            # the latter is reserved for a genuinely empty selection.
+            try:
+                text = self._read()
+            except FileNotFoundError as exc:
+                _log.error("wl-paste not found — install wl-clipboard")
+                raise RuntimeError(
+                    "wl-paste not found; install the 'wl-clipboard' package"
+                ) from exc
+            except subprocess.CalledProcessError as exc:
+                _log.error("wl-paste read failed (exit %s)", exc.returncode)
+                raise RuntimeError(
+                    f"wl-paste read failed (exit {exc.returncode})"
+                ) from exc
+            if text:
+                copied = True
+                return text
+            return None
+        finally:
+            if not copied and previous:
+                try:
+                    self.write(previous)
+                except Exception:
+                    _log.debug("clipboard restore failed", exc_info=True)
 
-    def paste_result(self, text: str) -> None:
+    def paste_result(self, text: str) -> bool:
+        # write() raises with a clear message if wl-copy is missing/fails, so
+        # the enhanced text is never silently dropped.
         self.write(text)
         time.sleep(self._settle_ms / 1000.0)
-        subprocess.run(
-            ["ydotool", "key", "29:1", "47:1", "47:0", "29:0"],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    "ydotool", "key",
+                    f"{self._KEY_LEFTCTRL}:1",
+                    f"{self._KEY_V}:1",
+                    f"{self._KEY_V}:0",
+                    f"{self._KEY_LEFTCTRL}:0",
+                ],
+                check=True,
+            )
+        except FileNotFoundError:
+            # Text is already on the clipboard (write() succeeded); the user
+            # can paste manually, so degrade rather than raise/lose data.
+            _log.warning(
+                "ydotool not found — enhanced text left on clipboard; "
+                "paste manually"
+            )
+            return False
+        except subprocess.CalledProcessError as exc:
+            _log.warning(
+                "ydotool paste failed (exit %s) — text left on clipboard",
+                exc.returncode,
+            )
+            return False
+        return True
 
 
 class WaylandNotify(NotifyBackend):
@@ -251,6 +604,12 @@ class WaylandActiveWindow(ActiveWindowBackend):
             return ""
 
     def _gnome_active_window(self) -> str:
+        # NOTE: GNOME 41+ disables Shell.Eval unless "unsafe mode" is enabled
+        # via Looking Glass, so on modern GNOME this gdbus call returns
+        # (false, '') (or errors). Both cases degrade cleanly to "" below and
+        # via get_frontmost_app()'s try/except — active-window detection is
+        # simply unavailable on locked-down GNOME, which is acceptable (it is
+        # only an optional same-app paste check).
         result = subprocess.run(
             [
                 "gdbus", "call", "--session",
@@ -313,7 +672,8 @@ class WaylandActiveWindow(ActiveWindowBackend):
     def _find_focused(self, node: dict) -> str:
         if node.get("focused"):
             return str(node.get("app_id", "") or node.get("name", ""))
-        for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        children = (node.get("nodes") or []) + (node.get("floating_nodes") or [])
+        for child in children:
             result = self._find_focused(child)
             if result:
                 return result

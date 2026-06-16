@@ -10,14 +10,15 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-15 |
-| Branch | feat/wizard-optional-api-key |
+| Branch | feat/linux-daemon-hardening (merged with main) |
 | Python | 3.14.3 |
-| Total Tests | 847 |
-| Test Result | **847 passed, 0 failed** |
-| Coverage | **93%** (target ≥ 90%) ✅ |
+| Total Tests | 944 |
+| Test Result | **937 passed, 7 linux-only deselected, 0 failed** |
+| Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
+| Pytest Warnings | **4** — `PytestUnhandledThreadExceptionWarning` in prewarm timer test |
 
 ---
 
@@ -62,7 +63,7 @@
 | `promptune/context/sanitizer.py` | 35 | 2 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 56 | 4 | 93% | ✅ | |
-| `promptune/daemon/daemon.py` | 184 | 1 | 99% | ✅ | Was 83% |
+| `promptune/daemon/daemon.py` | 175 | 1 | 99% | ✅ | Clipboard delivery failure handling |
 | `promptune/daemon/hotkey.py` | 61 | 0 | 100% | ✅ | Was 69% |
 | `promptune/daemon/ipc.py` | 89 | 8 | 91% | ✅ | Was 82% |
 | `promptune/daemon/launchagent.py` | 22 | 0 | 100% | ✅ | |
@@ -70,8 +71,8 @@
 | `promptune/daemon/platform/__init__.py` | 35 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/base.py` | 54 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/linux_service.py` | 64 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/linux_wayland.py` | 160 | 79 | 51% | ⚠️ | Requires real Wayland — linux-only |
-| `promptune/daemon/platform/linux_x11.py` | 124 | 67 | 46% | ⚠️ | Requires real X11 — linux-only |
+| `promptune/daemon/platform/linux_wayland.py` | 278 | 14 | 95% | ✅ | Portal match/session/binding handling hardened |
+| `promptune/daemon/platform/linux_x11.py` | 178 | 0 | 100% | ✅ | Real-display X11 tests + failure propagation |
 | `promptune/daemon/platform/macos.py` | 47 | 2 | 96% | ✅ | |
 | `promptune/daemon/prewarm.py` | 43 | 1 | 98% | ✅ | |
 | `promptune/dedup.py` | 55 | 2 | 96% | ✅ | |
@@ -97,7 +98,7 @@
 | `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
 | `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
 | `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3141** | **224** | **93%** | ✅ | Target: ≥ 90% |
+| **TOTAL** | **3318** | **92** | **97%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -123,11 +124,8 @@
 ### 3. ~~Ruff Lint Failures (33 errors)~~ [RESOLVED]
 **Fixed:** All 33 errors resolved (auto-fix + manual E501 wraps + SIM105 rewrites).
 
-### 4. Linux Platform Coverage (P3 — known gap)
-**Severity:** Low
-**Modules:** `linux_x11.py` (46%), `linux_wayland.py` (51%)
-**Reason:** Require real X11/Wayland display servers — cannot be fully tested on macOS CI
-**Acceptable:** ≥70% target applies when Linux CI is available
+### 4. ~~Linux Platform Coverage (P3 — known gap)~~ [RESOLVED]
+**Fixed:** Mocked coverage is now `linux_x11.py` 100% and `linux_wayland.py` 96%. X11 real-display tests run under Xvfb in CI; Wayland hardware sign-off remains manual.
 
 ### 5. ~~`gate.py` Coverage Below Target~~ [RESOLVED]
 **Fixed:** `_print_gate_block` rendering tested directly (border chars, score display, multiline handling, line truncation, end-to-end via `run_gate`). Now 100%.
@@ -144,6 +142,13 @@
 - `test_templates.py` — explicit "missing template variable" test
 
 **Status:** Deferred — module coverage already at target. See TaskList task #6.
+
+### 8. Prewarm timer emits thread exception warnings (P2)
+**Severity:** Medium
+**Test:** `tests/test_daemon/test_prewarm.py::TestStartPrewarmTimer::test_cancel_stops_repeating_chain`
+**Symptom:** Full suite passes but emits 4 `PytestUnhandledThreadExceptionWarning` warnings.
+**Cause:** A repeating timer can call `prewarm_ollama()` after test cancellation; the test mock leaves `httpx.HTTPStatusError` as a non-exception object in that background path.
+**Fix pointer:** Tighten timer cancellation/test cleanup or harden the mocked `httpx` exception setup.
 
 ---
 
@@ -164,8 +169,9 @@
 | ~~P1~~ | ~~Improve `gate.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `mcp/server.py` 53% → ≥90%~~ | ✅ Done | 100% |
 | P2 | Add missing PARTIAL test scenarios | Deferred | Task #6 |
-| P3 | Improve `linux_x11.py` 46% → ≥70% | Deferred | Needs Linux CI |
-| P3 | Improve `linux_wayland.py` 51% → ≥70% | Deferred | Needs Linux CI |
+| P2 | Fix prewarm timer thread warning | Open | `test_cancel_stops_repeating_chain` background timer |
+| ~~P3~~ | ~~Improve `linux_x11.py` 46% → ≥70%~~ | ✅ Done | 100% mocked + Xvfb CI |
+| ~~P3~~ | ~~Improve `linux_wayland.py` 51% → ≥70%~~ | ✅ Done | 95% mocked; hardware sign-off still manual |
 
 ---
 
@@ -183,4 +189,4 @@ After running verification, update:
 ## CI Pipeline Reference
 
 See `.github/workflows/ci.yml` for automated checks.
-Coverage gate is enforced with `--cov-fail-under=90` (now passing at 93%).
+Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97%).

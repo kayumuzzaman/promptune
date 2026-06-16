@@ -54,11 +54,22 @@ class ClipboardBackend(ABC):
 
     @abstractmethod
     def copy_selection(self) -> str | None:
-        """Simulate a copy keystroke and return the clipboard text."""
+        """Simulate a copy keystroke and return the selected text.
+
+        Returns the copied text, or ``None`` when the selection is empty.
+        Raises when the copy tool itself is missing or fails, so callers can
+        distinguish a broken dependency from a genuinely empty selection.
+        """
 
     @abstractmethod
-    def paste_result(self, text: str) -> None:
-        """Write *text* to the clipboard and simulate a paste keystroke."""
+    def paste_result(self, text: str) -> bool:
+        """Write *text* to the clipboard and try to inject a paste keystroke.
+
+        Returns ``True`` when the paste keystroke was injected, ``False`` when
+        the text was placed on the clipboard but the keystroke could not be
+        simulated (the user must paste manually). Raises when the clipboard
+        write itself fails (the text was not placed on the clipboard).
+        """
 
 
 class NotifyBackend(ABC):

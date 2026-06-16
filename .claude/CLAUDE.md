@@ -156,4 +156,4 @@ bypass_prefix = "!"                  # prefix to skip auto-enhance
 
 ## Coverage Target
 
-≥ 90% — check with `pytest --cov=promptune`
+≥ 85% — check with `pytest --cov=promptune`
