@@ -125,14 +125,39 @@ def get_frontmost_app() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _read_clipboard_raising() -> str:
+    """Read the clipboard via pbpaste, letting tool failures propagate."""
+    result = subprocess.run(
+        ["pbpaste"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
+
+
 def copy_selection() -> str | None:
     """Trigger a copy of the current selection and return the clipboard text.
 
-    Simulates Cmd+C, waits for the clipboard to settle, then reads it.
+    Clears the clipboard first so an empty selection (Cmd+C with nothing
+    selected) returns ``None`` instead of the stale prior value, restoring
+    that prior value before returning. Raises when pbcopy/pbpaste itself is
+    missing or fails, so callers can distinguish a broken tool from a
+    genuinely empty selection.
     """
+    previous = save_clipboard()
+    # Only clear what we can restore — if the prior read failed (None), don't
+    # wipe the clipboard, mirroring the Linux backends.
+    if previous is not None:
+        write_clipboard("")
     simulate_cmd_c()
     time.sleep(CLIPBOARD_SETTLE_MS / 1000.0)
-    return save_clipboard()
+    text = _read_clipboard_raising()
+    if text:
+        return text
+    if previous:
+        write_clipboard(previous)
+    return None
 
 
 def paste_result(text: str) -> bool:

@@ -129,3 +129,4 @@ class PlatformBackend:
     notify: NotifyBackend
     service: ServiceBackend
     active_window: ActiveWindowBackend
+    dependency_checker: DependencyChecker | None = None

@@ -51,8 +51,12 @@ def is_wsl() -> bool:
         return False
 
 
-def get_platform() -> PlatformBackend:
+def get_platform(settle_ms: int = 100) -> PlatformBackend:
     """Detect the current platform and return the appropriate backend bundle.
+
+    Args:
+        settle_ms: Clipboard settle delay (ms) applied to the Linux
+            clipboard backends.
 
     Returns:
         A :class:`PlatformBackend` with all backends configured for the
@@ -96,7 +100,12 @@ def get_platform() -> PlatformBackend:
 
         session = detect_session_type()
 
-        from promptune.daemon.platform.linux_service import LinuxService
+        from promptune.daemon.platform.linux_service import (
+            LinuxDependencyChecker,
+            LinuxService,
+        )
+
+        dependency_checker = LinuxDependencyChecker(session_type=session)
 
         if session == "x11":
             from promptune.daemon.platform.linux_x11 import (
@@ -108,10 +117,11 @@ def get_platform() -> PlatformBackend:
 
             return PlatformBackend(
                 hotkey=X11Hotkey(),
-                clipboard=X11Clipboard(),
+                clipboard=X11Clipboard(settle_ms=settle_ms),
                 notify=X11Notify(),
                 service=LinuxService(),
                 active_window=X11ActiveWindow(),
+                dependency_checker=dependency_checker,
             )
 
         # Wayland
@@ -124,10 +134,11 @@ def get_platform() -> PlatformBackend:
 
         return PlatformBackend(
             hotkey=WaylandHotkey(),
-            clipboard=WaylandClipboard(),
+            clipboard=WaylandClipboard(settle_ms=settle_ms),
             notify=WaylandNotify(),
             service=LinuxService(),
             active_window=WaylandActiveWindow(),
+            dependency_checker=dependency_checker,
         )
 
     raise PlatformError(

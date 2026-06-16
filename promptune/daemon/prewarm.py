@@ -59,11 +59,12 @@ def prewarm_ollama(
 
 
 class _RepeatingTimer(threading.Timer):
-    """A :class:`threading.Timer` that re-arms itself after each fire.
+    """A repeating timer: fires immediately, then once per ``interval``.
 
-    Setting ``daemon = True`` ensures the thread does not block process
-    exit.  A shared ``_stop_event`` propagates cancellation to all
-    replacement timers in the chain.
+    Runs a single daemon thread that fires the function and then waits
+    ``interval`` between fires (honoring the interval rather than busy-
+    respawning). ``cancel()`` sets a stop event that ends the loop,
+    interrupting an in-progress wait.
     """
 
     daemon = True
@@ -81,36 +82,23 @@ class _RepeatingTimer(threading.Timer):
         self._stop_event = _stop_event or threading.Event()
 
     def cancel(self) -> None:  # type: ignore[override]
-        """Cancel this timer and the entire repeating chain."""
+        """Cancel the timer and stop the repeating loop."""
         self._stop_event.set()
         super().cancel()
 
     def run(self) -> None:  # type: ignore[override]
-        """Fire the function and reschedule (unless stopped)."""
-        if self._stop_event.is_set():
-            return
-        self._reschedule()
-        self.function(*self.args, **self.kwargs)
-
-    def _reschedule(self) -> None:
-        """Create and start a replacement timer with the same parameters."""
-        if self._stop_event.is_set():
-            return
-        replacement = _RepeatingTimer(
-            self.interval,
-            self.function,
-            self.args,
-            self.kwargs,
-            _stop_event=self._stop_event,
-        )
-        replacement.daemon = True
-        replacement.start()
+        """Fire immediately, then re-fire every ``interval`` until stopped."""
+        while not self._stop_event.is_set():
+            self.function(*self.args, **self.kwargs)
+            if self._stop_event.wait(self.interval):
+                break
 
 
 def start_prewarm_timer(
     host: str,
     model: str,
     interval_minutes: float = 25,
+    keepalive: str = "30m",
 ) -> _RepeatingTimer:
     """Start a background timer that calls :func:`prewarm_ollama` periodically.
 
@@ -136,7 +124,7 @@ def start_prewarm_timer(
     timer = _RepeatingTimer(
         interval_seconds,
         prewarm_ollama,
-        args=(host, model),
+        args=(host, model, keepalive),
     )
     timer.daemon = True
     timer.start()

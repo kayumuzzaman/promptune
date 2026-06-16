@@ -113,8 +113,15 @@ def get_status() -> DaemonStatus:
     if running and PID_FILE.exists():
         uptime_seconds = time.time() - PID_FILE.stat().st_mtime
 
-    enhancement_count = 0
     socket_exists = SOCKET_PATH.exists()
+
+    enhancement_count = 0
+    if running and socket_exists:
+        from promptune.daemon.ipc import send_ipc_message
+
+        resp = send_ipc_message({"action": "status"})
+        if isinstance(resp, dict):
+            enhancement_count = resp.get("enhancement_count", 0)
 
     # Accessibility check is macOS-specific; on Linux it's always True
     accessibility_granted = True
@@ -150,6 +157,15 @@ def _on_hotkey(
     if _enhancing.is_set():
         return
 
+    daemon_cfg = config.get("daemon", {})
+    notify_enabled = daemon_cfg.get("notify", True)
+    notify_sound = daemon_cfg.get("notify_sound", True)
+
+    def _notify(title: str, body: str, sound: bool = True) -> None:
+        if not notify_enabled:
+            return
+        platform.notify.send(title, body, sound=sound and notify_sound)
+
     _enhancing.set()
     try:
         app_before = platform.active_window.get_frontmost_app()
@@ -163,7 +179,7 @@ def _on_hotkey(
             selected_text = platform.clipboard.copy_selection()
         except Exception:
             _log.exception("Copy tool failed")
-            platform.notify.send(
+            _notify(
                 "Promptune",
                 "Couldn't read selection — copy tool (xdotool/ydotool) "
                 "missing or broken.",
@@ -176,7 +192,7 @@ def _on_hotkey(
         # already restored the prior clipboard); a stale value can no longer
         # masquerade as a selection here.
         if not selected_text:
-            platform.notify.send(
+            _notify(
                 "Promptune", "No text selected. Select text first.", sound=False
             )
             return
@@ -194,7 +210,7 @@ def _on_hotkey(
             result = enhance(selected_text, config)
         except Exception:
             _log.exception("Enhancement failed")
-            platform.notify.send(
+            _notify(
                 "Promptune",
                 "Enhancement failed. Original text preserved.",
                 sound=False,
@@ -218,14 +234,14 @@ def _on_hotkey(
                 if injected:
                     delta = result.score_after.total - result.score_before.total
                     sign = "+" if delta >= 0 else ""
-                    platform.notify.send(
+                    _notify(
                         "Promptune",
                         f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
                     )
                 else:
                     # Write succeeded but the paste keystroke didn't inject \u2014
                     # the text is on the clipboard, so tell the user to paste.
-                    platform.notify.send(
+                    _notify(
                         "Promptune",
                         "Enhanced text on clipboard \u2014 paste manually "
                         "(Ctrl+V).",
@@ -233,14 +249,14 @@ def _on_hotkey(
                     )
             else:
                 platform.clipboard.write(result.enhanced)
-                platform.notify.send(
+                _notify(
                     "Promptune",
                     "Enhanced text in clipboard \u2014 paste manually.",
                     sound=False,
                 )
         except Exception:
             _log.exception("Failed to deliver enhanced text")
-            platform.notify.send(
+            _notify(
                 "Promptune",
                 "Enhancement ready but clipboard/paste failed \u2014 check "
                 "clipboard tools (xclip/wl-clipboard) are installed.",
@@ -293,9 +309,13 @@ def start_daemon(
         _log.error("Daemon already running (PID %d)", existing_pid)
         return
 
+    cfg_path = Path(config_path) if config_path else None
+    config = load_config(config_path=cfg_path)
+    settle_ms = config.get("daemon", {}).get("clipboard_settle_ms", 100)
+
     # Detect platform
     try:
-        platform = get_platform()
+        platform = get_platform(settle_ms=settle_ms)
     except PlatformError as exc:
         _log.error("Platform error: %s", exc)
         return
@@ -313,9 +333,6 @@ def start_daemon(
                 return
         except ImportError:
             pass
-
-    cfg_path = Path(config_path) if config_path else None
-    config = load_config(config_path=cfg_path)
 
     hotkey_str = config.get("daemon", {}).get("hotkey", "ctrl+shift+e")
 
@@ -342,9 +359,12 @@ def start_daemon(
     _log.info("Daemon started (PID %d)", os.getpid())
 
     state = DaemonState()
+    prewarm_timer: Any = None
 
     def _handle_term(signum: int, frame: Any) -> None:
         _log.info("Received signal %d, shutting down", signum)
+        if prewarm_timer is not None:
+            prewarm_timer.cancel()
         platform.hotkey.stop()
         _cleanup()
         sys.exit(0)
@@ -357,28 +377,44 @@ def start_daemon(
     # signal for graceful config reload without full restart.
     # Integration test: send SIGHUP to running daemon, assert config reloads.
 
-    start_ipc_server(state)
+    try:
+        start_ipc_server(state)
 
-    local_cfg = config.get("local_llm", {})
-    if local_cfg.get("enabled", False):
-        from promptune.daemon.prewarm import start_prewarm_timer
+        daemon_cfg = config.get("daemon", {})
+        local_cfg = config.get("local_llm", {})
+        if local_cfg.get("enabled", False) and daemon_cfg.get(
+            "ollama_prewarm", True
+        ):
+            from promptune.daemon.prewarm import start_prewarm_timer
 
-        host = local_cfg.get("host", "http://localhost:11434")
-        model = local_cfg.get("model", "qwen2.5:3b")
-        start_prewarm_timer(host, model)
-        _log.info("Ollama prewarm started for %s at %s", model, host)
+            host = local_cfg.get("host", "http://localhost:11434")
+            model = local_cfg.get("model", "qwen2.5:3b")
+            keepalive_minutes = daemon_cfg.get("ollama_keepalive_minutes", 30)
+            prewarm_timer = start_prewarm_timer(
+                host,
+                model,
+                interval_minutes=keepalive_minutes,
+                keepalive=f"{int(keepalive_minutes)}m",
+            )
+            _log.info("Ollama prewarm started for %s at %s", model, host)
 
-    def _hotkey_callback() -> None:
-        threading.Thread(
-            target=_on_hotkey,
-            args=(state, config, platform),
-            daemon=True,
-        ).start()
+        def _hotkey_callback() -> None:
+            threading.Thread(
+                target=_on_hotkey,
+                args=(state, config, platform),
+                daemon=True,
+            ).start()
 
-    platform.hotkey.register(hotkey_str, _hotkey_callback)
+        platform.hotkey.register(hotkey_str, _hotkey_callback)
 
-    _log.info("Entering event loop")
-    platform.hotkey.listen()
+        _log.info("Entering event loop")
+        platform.hotkey.listen()
+    except Exception:
+        _log.exception("Daemon startup failed; cleaning up")
+        if prewarm_timer is not None:
+            prewarm_timer.cancel()
+        _cleanup()
+        raise
 
 
 def stop_daemon() -> None:
