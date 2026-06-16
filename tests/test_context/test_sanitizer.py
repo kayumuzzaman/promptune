@@ -91,3 +91,28 @@ def test_sanitize_multiple_secrets() -> None:
     result = sanitize(text)
     assert "sk-abc123" not in result
     assert "ghp_def456" not in result
+
+
+def test_sanitize_keyword_value_with_equals_does_not_leak() -> None:
+    """A keyword value containing '=' is fully redacted (no fragment leak)."""
+    text = "api_key: foo=bar"
+    result = sanitize(text)
+    assert "foo" not in result
+    assert "bar" not in result
+    assert "[REDACTED]" in result
+
+
+def test_sanitize_bare_hex_secret() -> None:
+    """Redacts a long bare hex secret with no preceding keyword."""
+    text = "value bd1e4d8cf4430b9c8e1f2a3d4e5f60718293a4b5"
+    result = sanitize(text)
+    assert "bd1e4d8cf4430b9c8e1f2a3d4e5f60718293a4b5" not in result
+    assert "[REDACTED]" in result
+
+
+def test_sanitize_secret_at_start_of_segment() -> None:
+    """Redacts a high-entropy token even at the start of the string."""
+    text = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
+    result = sanitize(text)
+    assert text not in result
+    assert "[REDACTED]" in result
