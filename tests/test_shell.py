@@ -95,6 +95,13 @@ class TestTranslateKey:
     def test_raw_passthrough_fish_native(self) -> None:
         assert _translate_key("\\ce", "fish") == "\\ce"
 
+    def test_unsupported_modifier_raises(self) -> None:
+        import pytest
+
+        for combo in ("shift+e", "super+e", "cmd+e"):
+            with pytest.raises(ValueError, match="Unsupported"):
+                _translate_key(combo, "zsh")
+
 
 
 class TestGenerateZshWidget:

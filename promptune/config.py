@@ -28,7 +28,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "format_style": "auto",
         "model_claude": "claude-haiku-4-5-20251001",
         "model_openai": "gpt-4o-mini",
-        "model_openrouter": "anthropic/claude-haiku",
+        "model_openrouter": "anthropic/claude-haiku-4.5",
     },
     "api_keys": {
         "claude": "",
@@ -120,7 +120,13 @@ def _apply_cli_overrides(
     if "style" in cli_overrides:
         config["enhancement"]["default_mode"] = cli_overrides["style"]
     if "tier" in cli_overrides:
-        config["enhancement"]["max_tier"] = int(cli_overrides["tier"])
+        try:
+            config["enhancement"]["max_tier"] = int(cli_overrides["tier"])
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                f"Invalid --tier value {cli_overrides['tier']!r}: "
+                "must be an integer."
+            ) from exc
     if "format" in cli_overrides:
         config["provider"]["format_style"] = cli_overrides["format"]
     return config
@@ -234,51 +240,21 @@ def _validate(config: dict[str, Any]) -> None:
             )
 
 
+def _format_toml_value(value: Any) -> str:
+    """Format a Python value as a TOML scalar."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
+
+
 def generate_default_config() -> str:
-    """Return the default config as a TOML string."""
-    return """\
-# Promptune Configuration
-
-[provider]
-default = "claude"
-format_style = "auto"
-model_claude = "claude-haiku-4-5-20251001"
-model_openai = "gpt-4o-mini"
-model_openrouter = "anthropic/claude-haiku"
-
-[api_keys]
-claude = ""
-openai = ""
-openrouter = ""
-
-[enhancement]
-max_tier = 2
-default_mode = "balanced"
-max_tokens_output = 400
-timeout_seconds = 10
-
-[local_llm]
-enabled = true
-host = "http://localhost:11434"
-model = "qwen2.5:3b"
-api_key = ""
-
-[context]
-use_git = true
-use_shell_history = true
-use_stack_detection = true
-max_context_tokens = 500
-shell_history_lines = 20
-
-[history]
-enabled = true
-max_entries = 10000
-db_path = "~/.local/share/promptune/history.db"
-
-[tui]
-show_pqs_scores = true
-show_tier_used = true
-show_latency = true
-theme = "dark"
-show_diff = true
-"""
+    """Return the full default config (every documented key) as TOML."""
+    lines: list[str] = ["# Promptune Configuration", ""]
+    for section, values in DEFAULT_CONFIG.items():
+        lines.append(f"[{section}]")
+        for key, val in values.items():
+            lines.append(f"{key} = {_format_toml_value(val)}")
+        lines.append("")
+    return "\n".join(lines) + "\n"

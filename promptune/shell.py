@@ -17,6 +17,14 @@ def _translate_key(canonical: str, shell: str) -> str:
 
     parts = canonical.split()  # Split chord: "ctrl+x ctrl+e" -> ["ctrl+x", "ctrl+e"]
 
+    for part in parts:
+        modifier = part.partition("+")[0].lower()
+        if modifier not in {"ctrl", "alt"}:
+            raise ValueError(
+                f"Unsupported hotkey modifier {modifier!r} in "
+                f"{canonical!r}. Supported modifiers: ctrl, alt."
+            )
+
     if shell == "zsh":
         return _translate_key_zsh(parts)
     elif shell == "bash":

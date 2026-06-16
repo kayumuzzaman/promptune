@@ -7,7 +7,12 @@ from typing import Any
 import anthropic
 from anthropic.types import TextBlock
 
-from promptune.providers import BaseProvider, ProviderError, ProviderRegistry
+from promptune.providers import (
+    BaseProvider,
+    ProviderError,
+    ProviderRegistry,
+    redact_secrets,
+)
 
 
 class ClaudeProvider(BaseProvider):
@@ -38,7 +43,9 @@ class ClaudeProvider(BaseProvider):
                 messages=[{"role": "user", "content": prompt}],
             )
         except Exception as e:
-            raise ProviderError(str(e)) from e
+            raise ProviderError(
+                redact_secrets(str(e), self.api_key)
+            ) from e
 
         if not response.content:
             raise ProviderError("Empty response from Claude API")

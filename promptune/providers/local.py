@@ -14,6 +14,7 @@ from promptune.providers import (
     BaseProvider,
     ProviderError,
     ProviderRegistry,
+    redact_secrets,
 )
 
 
@@ -72,7 +73,9 @@ class LocalProvider(BaseProvider):
                 f"(cold start). Error: {e}"
             ) from e
         except Exception as e:
-            raise ProviderError(str(e)) from e
+            raise ProviderError(
+                redact_secrets(str(e), self.api_key)
+            ) from e
 
         choices = data.get("choices", [])
         if not choices:

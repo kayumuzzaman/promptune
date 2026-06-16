@@ -6,7 +6,12 @@ from typing import Any
 
 import openai as openai_sdk
 
-from promptune.providers import BaseProvider, ProviderError, ProviderRegistry
+from promptune.providers import (
+    BaseProvider,
+    ProviderError,
+    ProviderRegistry,
+    redact_secrets,
+)
 
 
 class OpenAIProvider(BaseProvider):
@@ -42,7 +47,9 @@ class OpenAIProvider(BaseProvider):
                 **extra,
             )
         except Exception as e:
-            raise ProviderError(str(e)) from e
+            raise ProviderError(
+                redact_secrets(str(e), self.api_key)
+            ) from e
 
         if not response.choices:
             raise ProviderError("Empty response from OpenAI API")

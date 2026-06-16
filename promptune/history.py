@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +39,10 @@ CREATE INDEX IF NOT EXISTS idx_enhancements_created_at
 CREATE INDEX IF NOT EXISTS idx_enhancements_project
     ON enhancements(project_root);
 """
+
+# Map of from-version -> SQL to migrate to from-version + 1.
+# Add an entry here whenever _SCHEMA_VERSION is bumped.
+_MIGRATIONS: dict[int, str] = {}
 
 _MAX_ENTRIES = 10000
 
@@ -92,11 +97,13 @@ class HistoryStore:
                 / "history.db"
             )
 
+        db_path = Path(db_path).expanduser()
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
+        self._lock = threading.RLock()
         self._conn_inner: sqlite3.Connection | None = (
-            sqlite3.connect(str(db_path))
+            sqlite3.connect(str(db_path), check_same_thread=False)
         )
         self._conn_inner.execute("PRAGMA journal_mode=WAL")
         self._init_schema()
@@ -122,16 +129,20 @@ class HistoryStore:
         self.close()
 
     def _init_schema(self) -> None:
-        """Create tables if needed."""
+        """Create tables on a fresh DB, then run any pending migrations."""
         version = self._conn.execute(
             "PRAGMA user_version"
         ).fetchone()[0]
         if version == 0:
             self._conn.executescript(_CREATE_SQL)
-            self._conn.execute(
-                f"PRAGMA user_version = {_SCHEMA_VERSION}"
-            )
-            self._conn.commit()
+            version = _SCHEMA_VERSION
+        while version < _SCHEMA_VERSION:
+            self._conn.executescript(_MIGRATIONS[version])
+            version += 1
+        self._conn.execute(
+            f"PRAGMA user_version = {_SCHEMA_VERSION}"
+        )
+        self._conn.commit()
 
     def record(self, entry: HistoryEntry) -> int:
         """Insert an enhancement record."""
@@ -141,39 +152,40 @@ class HistoryStore:
             else None
         )
 
-        cursor = self._conn.execute(
-            """INSERT INTO enhancements
-               (original, enhanced, decision,
-                edit_result, tier_used, provider,
-                format_style, model, score_before,
-                score_after, latency_ms,
-                rules_applied, context_json,
-                project_root)
-               VALUES (
-                   ?, ?, ?, ?, ?, ?, ?,
-                   ?, ?, ?, ?, ?, ?, ?
-               )""",
-            (
-                entry.original,
-                entry.enhanced,
-                entry.decision,
-                entry.edit_result,
-                entry.tier_used,
-                entry.provider,
-                entry.format_style,
-                entry.model,
-                entry.score_before,
-                entry.score_after,
-                entry.latency_ms,
-                rules_json,
-                entry.context_json,
-                entry.project_root,
-            ),
-        )
-        self._conn.commit()
-        self._maybe_prune()
-        row_id: int = cursor.lastrowid or 0
-        return row_id
+        with self._lock:
+            cursor = self._conn.execute(
+                """INSERT INTO enhancements
+                   (original, enhanced, decision,
+                    edit_result, tier_used, provider,
+                    format_style, model, score_before,
+                    score_after, latency_ms,
+                    rules_applied, context_json,
+                    project_root)
+                   VALUES (
+                       ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?
+                   )""",
+                (
+                    entry.original,
+                    entry.enhanced,
+                    entry.decision,
+                    entry.edit_result,
+                    entry.tier_used,
+                    entry.provider,
+                    entry.format_style,
+                    entry.model,
+                    entry.score_before,
+                    entry.score_after,
+                    entry.latency_ms,
+                    rules_json,
+                    entry.context_json,
+                    entry.project_root,
+                ),
+            )
+            self._conn.commit()
+            self._maybe_prune()
+            row_id: int = cursor.lastrowid or 0
+            return row_id
 
     def recent(
         self,
@@ -181,52 +193,60 @@ class HistoryStore:
         project: str | None = None,
     ) -> list[HistoryEntry]:
         """Get most recent entries."""
-        if project:
-            rows = self._conn.execute(
-                """SELECT original, enhanced,
-                          decision, edit_result,
-                          tier_used, provider,
-                          format_style, model,
-                          score_before, score_after,
-                          latency_ms, rules_applied,
-                          context_json, project_root
-                   FROM enhancements
-                   WHERE project_root = ?
-                   ORDER BY created_at DESC
-                   LIMIT ?""",
-                (project, n),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                """SELECT original, enhanced,
-                          decision, edit_result,
-                          tier_used, provider,
-                          format_style, model,
-                          score_before, score_after,
-                          latency_ms, rules_applied,
-                          context_json, project_root
-                   FROM enhancements
-                   ORDER BY created_at DESC
-                   LIMIT ?""",
-                (n,),
-            ).fetchall()
+        n = max(n, 0)
+        with self._lock:
+            if project:
+                rows = self._conn.execute(
+                    """SELECT original, enhanced,
+                              decision, edit_result,
+                              tier_used, provider,
+                              format_style, model,
+                              score_before, score_after,
+                              latency_ms, rules_applied,
+                              context_json, project_root
+                       FROM enhancements
+                       WHERE project_root = ?
+                       ORDER BY created_at DESC, id DESC
+                       LIMIT ?""",
+                    (project, n),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT original, enhanced,
+                              decision, edit_result,
+                              tier_used, provider,
+                              format_style, model,
+                              score_before, score_after,
+                              latency_ms, rules_applied,
+                              context_json, project_root
+                       FROM enhancements
+                       ORDER BY created_at DESC, id DESC
+                       LIMIT ?""",
+                    (n,),
+                ).fetchall()
 
         return [self._row_to_entry(row) for row in rows]
 
     def stats(self) -> HistoryStats:
         """Compute aggregate statistics."""
-        row = self._conn.execute(
-            """SELECT COUNT(*),
-                      SUM(CASE WHEN decision='accept'
-                          THEN 1 ELSE 0 END),
-                      SUM(CASE WHEN decision='reject'
-                          THEN 1 ELSE 0 END),
-                      SUM(CASE WHEN decision='edit'
-                          THEN 1 ELSE 0 END),
-                      AVG(score_before),
-                      AVG(score_after)
-               FROM enhancements"""
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT COUNT(*),
+                          SUM(CASE WHEN decision='accept'
+                              THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN decision='reject'
+                              THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN decision='edit'
+                              THEN 1 ELSE 0 END),
+                          AVG(score_before),
+                          AVG(score_after)
+                   FROM enhancements"""
+            ).fetchone()
+
+            tier_rows = self._conn.execute(
+                "SELECT tier_used, COUNT(*) "
+                "FROM enhancements GROUP BY tier_used"
+            ).fetchall()
 
         total = row[0] or 0
         accepted = row[1] or 0
@@ -234,11 +254,6 @@ class HistoryStore:
         edited = row[3] or 0
         avg_before = row[4] or 0.0
         avg_after = row[5] or 0.0
-
-        tier_rows = self._conn.execute(
-            "SELECT tier_used, COUNT(*) "
-            "FROM enhancements GROUP BY tier_used"
-        ).fetchall()
         tier_dist = {r[0]: r[1] for r in tier_rows}
 
         return HistoryStats(
@@ -257,12 +272,13 @@ class HistoryStore:
 
     def clear(self) -> int:
         """Delete all entries. Returns count deleted."""
-        count: int = self._conn.execute(
-            "SELECT COUNT(*) FROM enhancements"
-        ).fetchone()[0]
-        self._conn.execute("DELETE FROM enhancements")
-        self._conn.commit()
-        return count
+        with self._lock:
+            count: int = self._conn.execute(
+                "SELECT COUNT(*) FROM enhancements"
+            ).fetchone()[0]
+            self._conn.execute("DELETE FROM enhancements")
+            self._conn.commit()
+            return count
 
     def _maybe_prune(self) -> None:
         """Auto-prune if over MAX_ENTRIES."""
@@ -274,7 +290,7 @@ class HistoryStore:
                 """DELETE FROM enhancements
                    WHERE id NOT IN (
                        SELECT id FROM enhancements
-                       ORDER BY created_at DESC
+                       ORDER BY created_at DESC, id DESC
                        LIMIT ?
                    )""",
                 (_MAX_ENTRIES,),

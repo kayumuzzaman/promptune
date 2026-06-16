@@ -12,6 +12,7 @@ import click
 
 from promptune import __version__
 from promptune.config import (
+    VALID_PROVIDERS,
     ConfigError,
     default_config_path,
     generate_default_config,
@@ -231,8 +232,8 @@ def gate_cmd() -> None:
     try:
         raw = sys.stdin.read()
         data = _json.loads(raw)
-        prompt = data.get("prompt", "")
-    except (ValueError, KeyError):
+        prompt = data.get("prompt", "") if isinstance(data, dict) else ""
+    except ValueError:
         raise SystemExit(0) from None
 
     if not prompt:
@@ -287,6 +288,11 @@ def config(
     if ctx.invoked_subcommand is not None:
         return
 
+    if sum(bool(x) for x in (set_key, set_tier is not None, reset)) > 1:
+        raise click.UsageError(
+            "--set-key, --set-tier, and --reset are mutually exclusive."
+        )
+
     config_path = _get_config_path()
 
     if reset:
@@ -302,6 +308,11 @@ def config(
 
     if set_key:
         provider_name, key_value = set_key
+        if provider_name not in VALID_PROVIDERS:
+            raise click.UsageError(
+                f"Unknown provider '{provider_name}'. "
+                f"Valid: {', '.join(sorted(VALID_PROVIDERS))}."
+            )
         _update_config_value(
             config_path,
             f"api_keys.{provider_name}",
@@ -454,7 +465,10 @@ def config_show(config_path: str | None) -> None:
         click.echo(f"[{section}]")
         if isinstance(values, dict):
             for key, val in values.items():
-                if section == "api_keys" and isinstance(val, str) and val:
+                is_secret = section == "api_keys" or (
+                    section == "local_llm" and key == "api_key"
+                )
+                if is_secret and isinstance(val, str) and val:
                     val = mask_key(val)
                 click.echo(f"  {key} = {val}")
         click.echo()
@@ -491,7 +505,10 @@ def config_path_cmd(config_path: str | None) -> None:
 )
 def shell_init(shell: str, key: str) -> None:
     """Output shell widget script for prompt enhancement."""
-    click.echo(generate_widget(shell, key))
+    try:
+        click.echo(generate_widget(shell, key))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 @main.command("doctor")
@@ -527,7 +544,7 @@ def doctor_cmd() -> None:
         symbol = "\u2713" if installed else "\u2717"
         cfg = load_config()
         threshold = cfg.get("auto_enhance", {}).get(
-            "threshold", 60
+            "threshold", 40
         )
         detail = (
             f"{installer.name} (threshold: {threshold})"

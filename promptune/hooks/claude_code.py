@@ -7,8 +7,11 @@ pipes every prompt through ``promptune gate``.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
+
+from promptune.hooks import HookConfigError
 
 CLAUDE_DIR = Path.home() / ".claude"
 SETTINGS_PATH = CLAUDE_DIR / "settings.json"
@@ -16,19 +19,24 @@ HOOK_COMMAND = "promptune gate"
 
 
 def _load_settings() -> dict[str, Any]:
-    """Load settings.json or return empty dict."""
-    if SETTINGS_PATH.exists():
-        try:
-            return json.loads(SETTINGS_PATH.read_text())  # type: ignore[no-any-return]
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return {}
+    """Load settings.json, or raise rather than clobber an unreadable file."""
+    if not SETTINGS_PATH.exists():
+        return {}
+    try:
+        return json.loads(SETTINGS_PATH.read_text())  # type: ignore[no-any-return]
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HookConfigError(
+            f"Refusing to overwrite unreadable {SETTINGS_PATH}: {exc}"
+        ) from exc
 
 
 def _save_settings(data: dict[str, Any]) -> None:
-    """Write settings.json, creating parent dirs if needed."""
+    """Atomically write settings.json with owner-only permissions."""
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(data, indent=2))
+    tmp = SETTINGS_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, SETTINGS_PATH)
 
 
 class ClaudeCodeInstaller:
@@ -69,9 +77,13 @@ class ClaudeCodeInstaller:
         data.setdefault("hooks", {})["UserPromptSubmit"] = [
             entry
             for entry in entries
-            if not any(
-                HOOK_COMMAND in h.get("command", "")
-                for h in entry.get("hooks", [])
+            if not (
+                isinstance(entry, dict)
+                and any(
+                    HOOK_COMMAND in h.get("command", "")
+                    for h in (entry.get("hooks") or [])
+                    if isinstance(h, dict)
+                )
             )
         ]
         _save_settings(data)
@@ -103,5 +115,7 @@ class ClaudeCodeInstaller:
         return any(
             HOOK_COMMAND in h.get("command", "")
             for entry in entries
-            for h in entry.get("hooks", [])
+            if isinstance(entry, dict)
+            for h in (entry.get("hooks") or [])
+            if isinstance(h, dict)
         )

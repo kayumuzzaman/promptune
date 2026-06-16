@@ -528,7 +528,7 @@ default = "claude"                        # claude | openai | openrouter
 format_style = "auto"                     # auto | xml | markdown | plain
 model_claude = "claude-haiku-4-5-20251001"
 model_openai = "gpt-4o-mini"
-model_openrouter = "anthropic/claude-haiku"
+model_openrouter = "anthropic/claude-haiku-4.5"
 
 [api_keys]
 claude = "sk-ant-your-key-here"
@@ -633,7 +633,7 @@ export PROMPTUNE_STYLE="balanced"
 - **SDK:** `httpx` (HTTP client)
 - **Get API key:** https://openrouter.ai/keys
 - **Config:** `[api_keys] openrouter = "sk-or-..."` and `[provider] model_openrouter = "..."`
-- **Default model:** `anthropic/claude-haiku`
+- **Default model:** `anthropic/claude-haiku-4.5`
 - **Note:** Access to 200+ models through a single API key. Pay-per-use.
 
 ## TUI Controls

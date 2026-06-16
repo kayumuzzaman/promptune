@@ -40,7 +40,7 @@ _BASE_CONFIG: dict[str, Any] = {
         "format_style": "auto",
         "model_claude": "claude-haiku-4-5-20251001",
         "model_openai": "gpt-4o-mini",
-        "model_openrouter": "anthropic/claude-haiku",
+        "model_openrouter": "anthropic/claude-haiku-4.5",
     },
     "api_keys": {
         "claude": "",
@@ -250,3 +250,18 @@ class TestRunGateInjects:
         out = capsys.readouterr().out
         # Whole stdout must parse as a single JSON object, nothing else.
         json.loads(out)
+
+
+def test_gate_threshold_defaults_to_40(capsys) -> None:
+    """Missing threshold defaults to 40, not 60."""
+    cfg: dict[str, Any] = {
+        **_BASE_CONFIG,
+        "auto_enhance": {"enabled": True, "min_words": 5},
+    }
+    with patch(
+        "promptune.gate.score_prompt",
+        return_value=_make_score(45),
+    ):
+        code = run_gate("a prompt with at least five words", cfg)
+    assert code == 0
+    assert capsys.readouterr().out == ""

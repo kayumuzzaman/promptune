@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 
+class HookConfigError(Exception):
+    """Raised when an existing tool config file cannot be safely modified."""
+
+
 @runtime_checkable
 class HookInstaller(Protocol):
     """Protocol for tool-specific hook installers."""
