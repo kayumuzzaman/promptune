@@ -52,6 +52,14 @@ def test_detect_intent_word_boundary() -> None:
 
     # "api" must not match inside "rapidly"
     assert detect_intent("rapidly iterate on the team plan") != "coding"
+
+
+def test_detect_intent_matches_regular_plurals() -> None:
+    """Plural coding keywords still count (e.g. 'tests' -> 'test')."""
+    from promptune.meta_prompt import detect_intent
+
+    assert detect_intent("write tests") == "coding"
+    assert detect_intent("add api endpoints") == "coding"
     assert detect_intent("build a REST api endpoint") == "coding"
 
 

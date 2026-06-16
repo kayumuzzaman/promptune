@@ -97,6 +97,24 @@ class TestClaudeCodeInstall:
         # Must not raise AttributeError on the bare-string entry.
         assert installer.is_installed() is False
 
+    def test_is_installed_tolerates_corrupt_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Read-only status check returns False on corrupt JSON, not raises.
+
+        ``promptune doctor`` calls is_installed(); a broken settings file must
+        report "not installed" instead of aborting the diagnostic.
+        """
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text("{ not valid json")
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        assert installer.is_installed() is False
+        assert installer.is_mcp_installed() is False
+
     def test_is_installed_tolerates_null_hooks(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -150,9 +150,16 @@ def copy_selection() -> str | None:
     # wipe the clipboard, mirroring the Linux backends.
     if previous is not None:
         write_clipboard("")
-    simulate_cmd_c()
-    time.sleep(CLIPBOARD_SETTLE_MS / 1000.0)
-    text = _read_clipboard_raising()
+    try:
+        simulate_cmd_c()
+        time.sleep(CLIPBOARD_SETTLE_MS / 1000.0)
+        text = _read_clipboard_raising()
+    except Exception:
+        # A failed copy/read after the clear must not leave the user's
+        # clipboard wiped — restore the prior value before propagating.
+        if previous:
+            write_clipboard(previous)
+        raise
     if text:
         return text
     if previous:

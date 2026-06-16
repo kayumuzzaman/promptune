@@ -102,13 +102,29 @@ class ClaudeCodeInstaller:
         _save_settings(data)
 
     def is_mcp_installed(self) -> bool:
-        """Return True if promptune MCP server is registered."""
-        data = _load_settings()
+        """Return True if promptune MCP server is registered.
+
+        Read-only status check: a corrupt settings file means "not
+        installed" rather than an error, so diagnostics like
+        ``promptune doctor`` don't abort.
+        """
+        try:
+            data = _load_settings()
+        except HookConfigError:
+            return False
         return "promptune" in data.get("mcpServers", {})
 
     def is_installed(self) -> bool:
-        """Return True if promptune hook is in settings.json."""
-        data = _load_settings()
+        """Return True if promptune hook is in settings.json.
+
+        Tolerates a corrupt settings file (treated as not installed) so
+        read-only status checks don't abort; write paths still refuse to
+        clobber an unreadable file.
+        """
+        try:
+            data = _load_settings()
+        except HookConfigError:
+            return False
         entries = data.get("hooks", {}).get(
             "UserPromptSubmit", []
         )

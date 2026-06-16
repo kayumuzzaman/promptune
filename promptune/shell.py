@@ -114,7 +114,7 @@ _IPC_POSIX = (
     " --show-toplevel 2>/dev/null)\"'\"}' | \\\n"
     "        socat - UNIX-CONNECT:"
     "~/.local/share/promptune/promptune.sock"
-    " 2>/dev/null &"
+    " >/dev/null 2>&1 &"
 )
 
 _IPC_FISH = (
@@ -125,7 +125,7 @@ _IPC_FISH = (
     " --show-toplevel 2>/dev/null)'\"}' | \\\n"
     "        socat - UNIX-CONNECT:"
     "~/.local/share/promptune/promptune.sock"
-    " 2>/dev/null &"
+    " >/dev/null 2>&1 &"
 )
 
 

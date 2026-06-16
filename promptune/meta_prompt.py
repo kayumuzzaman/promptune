@@ -70,7 +70,7 @@ def detect_intent(prompt: str) -> str:
     scores: dict[str, int] = {intent: 0 for intent in _INTENT_KEYWORDS}
     for intent, keywords in _INTENT_KEYWORDS.items():
         for kw in keywords:
-            if re.search(r'\b' + re.escape(kw) + r'\b', lower):
+            if re.search(r'\b' + re.escape(kw) + r's?\b', lower):
                 scores[intent] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"
@@ -82,7 +82,7 @@ def detect_domain(prompt: str) -> str:
     scores: dict[str, int] = {domain: 0 for domain in _DOMAIN_KEYWORDS}
     for domain, keywords in _DOMAIN_KEYWORDS.items():
         for kw in keywords:
-            if re.search(r'\b' + re.escape(kw) + r'\b', lower):
+            if re.search(r'\b' + re.escape(kw) + r's?\b', lower):
                 scores[domain] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"
@@ -94,7 +94,7 @@ def detect_stack(prompt: str) -> list[str]:
     found: list[str] = []
     for tech, keywords in _STACK_KEYWORDS.items():
         for kw in keywords:
-            if re.search(r'\b' + re.escape(kw) + r'\b', lower):
+            if re.search(r'\b' + re.escape(kw) + r's?\b', lower):
                 if tech not in found:
                     found.append(tech)
                 break

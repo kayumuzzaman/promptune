@@ -136,6 +136,11 @@ class HistoryStore:
         if version == 0:
             self._conn.executescript(_CREATE_SQL)
             version = _SCHEMA_VERSION
+        elif version > _SCHEMA_VERSION:
+            # DB was created by a newer Promptune. Leave it untouched rather
+            # than stamping it back down to our version, which would make a
+            # later upgrade run migrations from the wrong base.
+            return
         while version < _SCHEMA_VERSION:
             self._conn.executescript(_MIGRATIONS[version])
             version += 1

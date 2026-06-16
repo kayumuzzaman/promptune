@@ -59,6 +59,39 @@ def test_openai_enhance_sends_correct_params(
     )
 
 
+def _enhance_with_cap(mocker: MockerFixture, model: str) -> dict:
+    """Run enhance with a token cap and return the kwargs sent to the SDK."""
+    mock_client = mocker.MagicMock()
+    mock_choice = mocker.MagicMock()
+    mock_choice.message.content = "result"
+    mock_client.chat.completions.create.return_value = mocker.MagicMock(
+        choices=[mock_choice]
+    )
+    mocker.patch(
+        "promptune.providers.openai.openai_sdk.OpenAI",
+        return_value=mock_client,
+    )
+    provider = OpenAIProvider(api_key="test-key", model=model, max_tokens=128)
+    provider.enhance("p", "s")
+    return mock_client.chat.completions.create.call_args.kwargs
+
+
+def test_openai_chat_model_uses_max_tokens(mocker: MockerFixture) -> None:
+    """Classic chat models receive the legacy max_tokens parameter."""
+    kwargs = _enhance_with_cap(mocker, "gpt-4o-mini")
+    assert kwargs["max_tokens"] == 128
+    assert "max_completion_tokens" not in kwargs
+
+
+def test_openai_o_series_uses_max_completion_tokens(
+    mocker: MockerFixture,
+) -> None:
+    """o-series reasoning models receive max_completion_tokens instead."""
+    kwargs = _enhance_with_cap(mocker, "o3-mini")
+    assert kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in kwargs
+
+
 def test_openai_api_error_handling(mocker: MockerFixture) -> None:
     """API error raises ProviderError."""
     mock_client = mocker.MagicMock()

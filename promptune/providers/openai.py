@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import openai as openai_sdk
@@ -36,7 +37,15 @@ class OpenAIProvider(BaseProvider):
         """Send prompt to OpenAI and return enhanced version."""
         extra: dict[str, Any] = {}
         if self.max_tokens is not None:
-            extra["max_tokens"] = self.max_tokens
+            # o-series reasoning models (o1/o3/o4...) reject `max_tokens` and
+            # require `max_completion_tokens`; chat models still take the old
+            # parameter, so pick based on the configured model name.
+            param = (
+                "max_completion_tokens"
+                if re.match(r"o\d", self.model)
+                else "max_tokens"
+            )
+            extra[param] = self.max_tokens
         try:
             response = self._client.chat.completions.create(
                 model=self.model,
