@@ -16,7 +16,6 @@ import sys
 from typing import Any
 
 from promptune.engine import enhance
-from promptune.pqs import compute_pqs
 from promptune.scorer import score_prompt
 
 _INJECT_PREFIX = (
@@ -57,18 +56,18 @@ def run_gate(prompt: str, config: dict[str, Any]) -> int:
         return 0
 
     threshold = auto_cfg.get("threshold", 40)
+    # Compare the same number `promptune score` prints as PQS (ScoreResult
+    # .total), so a threshold calibrated from the CLI behaves as expected.
     score_before = score_prompt(prompt)
-    pqs_before = compute_pqs(score_before).overall
 
-    if pqs_before >= threshold:
+    if score_before.total >= threshold:
         return 0
 
     result = enhance(prompt, config)
-    pqs_after = compute_pqs(result.score_after).overall
     _emit_inject(_INJECT_PREFIX + result.enhanced)
     print(
-        f"promptune: enhanced {pqs_before}"
-        f"->{pqs_after}",
+        f"promptune: enhanced {score_before.total}"
+        f"->{result.score_after.total}",
         file=sys.stderr,
     )
     return 0

@@ -251,6 +251,40 @@ class TestRunGateInjects:
         # Whole stdout must parse as a single JSON object, nothing else.
         json.loads(out)
 
+    def test_gate_uses_displayed_total_not_pqs_overall(self, capsys) -> None:
+        """Gate must compare ScoreResult.total (what `score` prints), not the
+        compute_pqs overall, so a threshold calibrated from the CLI holds."""
+        # total=36 is below the threshold of 40, but every dimension at 0.44
+        # makes compute_pqs(...).overall == 44 (>= 40). The prompt must still
+        # be enhanced because the displayed total is below threshold.
+        diverging = ScoreResult(
+            total=36,
+            intent="coding",
+            dimensions={
+                name: DimensionScore(0.44, w, [], "ok")
+                for name, w in [
+                    ("specificity", 25.0),
+                    ("clarity", 20.0),
+                    ("structure", 15.0),
+                    ("actionability", 15.0),
+                    ("context", 10.0),
+                    ("completeness", 10.0),
+                    ("conciseness", 5.0),
+                ]
+            },
+        )
+        with (
+            patch("promptune.gate.score_prompt", return_value=diverging),
+            patch(
+                "promptune.gate.enhance",
+                return_value=self._mock_result(),
+            ),
+        ):
+            run_gate("implement a rest api with authentication now", _BASE_CONFIG)
+        out = capsys.readouterr().out
+        assert out != ""
+        json.loads(out)
+
 
 def test_gate_threshold_defaults_to_40(capsys) -> None:
     """Missing threshold defaults to 40, not 60."""

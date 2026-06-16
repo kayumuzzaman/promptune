@@ -130,8 +130,16 @@ def test_sanitize_preserves_camelcase_source_paths() -> None:
 
 
 def test_sanitize_still_redacts_secret_next_to_a_path() -> None:
-    """Dropping '/' from the token scan must not let secrets slip through."""
+    """A secret beside a path is still redacted."""
     text = "see config/app.py token sk-ant-abc123xyz456def"
     result = sanitize(text)
     assert "sk-ant-abc123xyz456def" not in result
+    assert "[REDACTED]" in result
+
+
+def test_sanitize_redacts_slash_bearing_base64_secret() -> None:
+    """A high-entropy base64 token containing '/' is still redacted."""
+    secret = "AbCdEfGhIjKlMnOp/QrStUvWxYz012345/AbCdEfGhIjKl"
+    result = sanitize(f"creds={secret}")
+    assert secret not in result
     assert "[REDACTED]" in result

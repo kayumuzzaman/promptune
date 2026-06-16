@@ -251,6 +251,32 @@ class TestCopySelection:
         ]
         assert result == "selected text"
 
+    def test_does_not_clear_non_text_clipboard(self) -> None:
+        """An image/empty clipboard (pbpaste -> "") must not be cleared/wiped."""
+        writes: list[str] = []
+
+        with (
+            patch(
+                "promptune.daemon.clipboard.save_clipboard",
+                return_value="",
+            ),
+            patch(
+                "promptune.daemon.clipboard.write_clipboard",
+                side_effect=lambda v: writes.append(v),
+            ),
+            patch("promptune.daemon.clipboard.simulate_cmd_c"),
+            patch("promptune.daemon.clipboard.time.sleep"),
+            patch(
+                "promptune.daemon.clipboard._read_clipboard_raising",
+                return_value="",
+            ),
+        ):
+            result = clipboard.copy_selection()
+
+        assert result is None
+        # No clearing write happened, so the non-text clipboard is preserved.
+        assert writes == []
+
     def test_restores_clipboard_when_read_fails(self) -> None:
         """A failed read after the clear must restore the prior clipboard."""
         restored: list[str] = []

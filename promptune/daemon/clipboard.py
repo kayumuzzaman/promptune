@@ -146,9 +146,11 @@ def copy_selection() -> str | None:
     genuinely empty selection.
     """
     previous = save_clipboard()
-    # Only clear what we can restore — if the prior read failed (None), don't
-    # wipe the clipboard, mirroring the Linux backends.
-    if previous is not None:
+    # Only clear what we can put back: skip the clear when the prior read
+    # failed (None) or is empty text (""), which is also what pbpaste returns
+    # for a non-text clipboard such as an image — clearing then would wipe it
+    # with no way to restore. Mirrors the Linux backends.
+    if previous:
         write_clipboard("")
     try:
         simulate_cmd_c()

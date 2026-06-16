@@ -33,10 +33,7 @@ _KEYWORD_PATTERNS: list[re.Pattern[str]] = [
     ),
 ]
 
-# Path separators are excluded so a long path like
-# "packages/frontend/src/CheckoutExperienceManager" isn't scanned as one
-# high-entropy token and redacted; each segment is judged on its own.
-_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+_-]{20,}={0,2}")
+_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9+/_-]{20,}={0,2}")
 
 _REDACTED = "[REDACTED]"
 
@@ -66,6 +63,13 @@ def _looks_like_secret(token: str) -> bool:
     has_digit = any(c.isdigit() for c in token)
     classes = has_lower + has_upper + has_digit
     entropy = _shannon_entropy(token)
+    if "/" in token:
+        # Path-like vs base64-with-slash: a source path is typically
+        # digit-free and lower entropy, while a slash-bearing credential has
+        # digits and high entropy. Require the stronger signal so paths such
+        # as "packages/src/CheckoutExperienceManager" aren't redacted while
+        # base64 secrets containing "/" still are.
+        return has_digit and classes >= 2 and entropy >= 4.0
     if has_digit and (has_lower or has_upper) and entropy >= 3.5:
         return True
     return entropy >= 4.0 and classes >= 2
