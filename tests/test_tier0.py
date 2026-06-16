@@ -189,6 +189,15 @@ def test_rule_negation_rewrite() -> None:
     assert result_negs <= original_negs
 
 
+def test_rule_negation_rewrite_spaced_do_not_use() -> None:
+    """'do not use' rewrites to 'avoid using', not the ungrammatical 'avoid use'."""
+    prompt = "Do not use global variables in the auth module please"
+    score = score_prompt(prompt)
+    result = apply_rules(prompt, score)
+    assert "avoid using" in result.enhanced.lower()
+    assert "avoid use " not in result.enhanced.lower()
+
+
 def test_rule_add_role() -> None:
     """Prepends role when context score is low."""
     score = score_prompt(

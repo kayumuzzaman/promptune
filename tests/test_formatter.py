@@ -29,6 +29,22 @@ def test_detect_claude_xml() -> None:
     )
 
 
+def test_detect_o3_reasoning_markdown() -> None:
+    """o3 reasoning models match the markdown rule."""
+    assert detect_format_style("o3-mini") == FormatStyle.MARKDOWN
+    assert detect_format_style("o3") == FormatStyle.MARKDOWN
+
+
+def test_extract_param_count_handles_decimals() -> None:
+    """Decimal model sizes are parsed as a whole, not just the fraction."""
+    from promptune.formatter import _extract_param_count
+
+    assert _extract_param_count("qwen3-0.6b") == 0
+    assert _extract_param_count("qwen2.5-1.5b") == 1
+    assert _extract_param_count("llama-70b") == 70
+    assert _extract_param_count("gpt-4o-mini") is None
+
+
 def test_detect_gemini_xml() -> None:
     """Gemini models get XML format."""
     assert (

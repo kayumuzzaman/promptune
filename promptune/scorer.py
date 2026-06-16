@@ -60,7 +60,7 @@ def _detect_intent(prompt: str) -> str:
     scores: dict[str, int] = {k: 0 for k in _INTENT_KEYWORDS}
     for intent, keywords in _INTENT_KEYWORDS.items():
         for kw in keywords:
-            if kw in lower:
+            if re.search(rf"\b{re.escape(kw)}\b", lower):
                 scores[intent] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"
@@ -78,8 +78,12 @@ def _diminishing_returns(
 def _sigmoid_calibrate(
     raw: float, midpoint: float = 50.0, steepness: float = 0.08
 ) -> float:
-    """Sigmoid calibration to prevent 40-60 clustering."""
-    return 100.0 / (1 + math.exp(-steepness * (raw - midpoint)))
+    """Sigmoid calibration (rescaled so raw 0->0 and raw 100->100)."""
+    def _sig(x: float) -> float:
+        return 100.0 / (1 + math.exp(-steepness * (x - midpoint)))
+
+    lo, hi = _sig(0.0), _sig(100.0)
+    return (_sig(raw) - lo) / (hi - lo) * 100.0
 
 
 # --- Word sets ---
@@ -260,7 +264,8 @@ def _score_clarity(
 
     negations = len(
         re.findall(
-            r"\bdon'?t\b|\bnot\b|\bnever\b|\bno\b|\bnor\b",
+            r"\bdon'?t\b|\bnot\b|\bnever\b"
+            r"|\bno\b(?!\s+(?:more|less|fewer|longer)\b)|\bnor\b",
             prompt.lower(),
         )
     )
@@ -309,9 +314,9 @@ def _score_structure(prompt: str) -> DimensionScore:
         markers += lists
         signals.append(f"{lists} list items")
 
-    code_blocks = len(re.findall(r'```', prompt))
+    code_blocks = len(re.findall(r'```', prompt)) // 2
     if code_blocks > 0:
-        markers += code_blocks // 2
+        markers += code_blocks
         signals.append("code blocks")
 
     xml_tags = len(re.findall(r'<\w+>', prompt))
@@ -434,6 +439,7 @@ def _score_completeness(prompt: str) -> DimensionScore:
         r'\b(output|return|format|respond)\b.*'
         r'\b(json|xml|csv|table|list|markdown)\b',
         lower,
+        re.DOTALL,
     ):
         score += 0.35
         signals.append("output format specified")

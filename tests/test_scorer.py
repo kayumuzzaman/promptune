@@ -77,6 +77,15 @@ def test_clarity_penalizes_negation() -> None:
     assert pos_score >= neg_score
 
 
+def test_clarity_constraint_no_more_than_not_penalized() -> None:
+    """The constraint phrase 'no more than' is not counted as a negation."""
+    result = score_prompt(
+        "Return a summary in no more than 100 words using Python"
+    )
+    signals = result.dimensions["clarity"].signals
+    assert not any("negation" in s for s in signals)
+
+
 def test_structure_detects_markdown() -> None:
     """Prompt with markdown structure scores high."""
     structured = score_prompt(
@@ -158,6 +167,14 @@ def test_intent_detection_research() -> None:
     """Research intent detected for research prompts."""
     result = score_prompt("explain how DNS resolution works")
     assert result.intent == "research"
+
+
+def test_intent_detection_ignores_substring_matches() -> None:
+    """Keywords match whole words, not substrings (api vs capital)."""
+    result = score_prompt(
+        "write an essay about capital punishment for my blog"
+    )
+    assert result.intent == "writing"
 
 
 def test_score_calibration_prevents_clustering() -> None:

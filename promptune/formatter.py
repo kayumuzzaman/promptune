@@ -25,7 +25,7 @@ MODEL_FORMAT_MAP: list[tuple[str, FormatStyle]] = [
     (r"gemini", FormatStyle.XML),
     # Markdown preference
     (r"gpt[-_]?\d", FormatStyle.MARKDOWN),
-    (r"o[134][-_]?(mini|preview)?", FormatStyle.MARKDOWN),
+    (r"o[1-4][-_]?(mini|preview)?", FormatStyle.MARKDOWN),
     (
         r"mistral[-_]?(large|medium)|mixtral|magistral",
         FormatStyle.MARKDOWN,
@@ -74,10 +74,10 @@ def _strip_provider_prefix(model_id: str) -> str:
 
 
 def _extract_param_count(model_id: str) -> int | None:
-    """Extract parameter count in billions."""
-    match = re.search(r"(\d+)[bB]", model_id)
+    """Extract parameter count in billions (floored to a whole number)."""
+    match = re.search(r"(\d+(?:\.\d+)?)\s*[bB]\b", model_id)
     if match:
-        return int(match.group(1))
+        return int(float(match.group(1)))
     return None
 
 

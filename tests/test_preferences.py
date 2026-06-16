@@ -118,6 +118,20 @@ class TestEditPatterns:
         assert len(patterns) >= 1
         assert any(p.pattern_type == "removes_role" for p in patterns)
 
+    def test_role_removal_detected_hyphenated_role(
+        self, store: HistoryStore
+    ) -> None:
+        for _ in range(5):
+            store.record(_make_entry(
+                decision="edit",
+                enhanced="You are a back-end developer. Fix the auth bug",
+                edit_result="Fix the auth bug",
+            ))
+
+        patterns = analyse_edit_patterns(store, min_samples=5)
+
+        assert any(p.pattern_type == "removes_role" for p in patterns)
+
     def test_format_removal_detected(self, store: HistoryStore) -> None:
         for _ in range(5):
             store.record(_make_entry(

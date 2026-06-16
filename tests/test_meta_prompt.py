@@ -40,6 +40,29 @@ def test_detect_stack_python() -> None:
     assert "flask" in stack
 
 
+def test_detect_stack_ignores_english_go() -> None:
+    """The English verb 'go' must not trigger Go-stack detection."""
+    assert "go" not in detect_stack("go fast and build something")
+    assert "go" in detect_stack("update the go.mod and add a goroutine")
+
+
+def test_detect_intent_word_boundary() -> None:
+    """Intent keywords match whole words, not substrings."""
+    from promptune.meta_prompt import detect_intent
+
+    # "api" must not match inside "rapidly"
+    assert detect_intent("rapidly iterate on the team plan") != "coding"
+    assert detect_intent("build a REST api endpoint") == "coding"
+
+
+def test_detect_domain_word_boundary() -> None:
+    """Domain keywords match whole words, not substrings."""
+    from promptune.meta_prompt import detect_domain
+
+    # "data" must not match inside "update"
+    assert detect_domain("update the readme file") != "datascience"
+
+
 def test_build_system_prompt_minimal() -> None:
     """Minimal style produces conservative prompt."""
     prompt = build_system_prompt(
