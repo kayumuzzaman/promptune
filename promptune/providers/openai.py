@@ -58,7 +58,7 @@ class OpenAIProvider(BaseProvider):
         if not content:
             raise ProviderError("Empty response from OpenAI API")
 
-        return content
+        return str(content)
 
 
 def register(registry: ProviderRegistry) -> None:
