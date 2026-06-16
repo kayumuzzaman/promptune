@@ -101,6 +101,7 @@ def _build_provider_config(
         "api_key": config["api_keys"].get(provider_name, ""),
         "model": config["provider"].get(model_key, ""),
         "timeout": float(timeout),
+        "max_tokens": config["enhancement"].get("max_tokens_output", 400),
     }
 
 
@@ -128,6 +129,7 @@ def _try_tier1(
         host=local_cfg["host"],
         api_key=local_cfg.get("api_key", ""),
         timeout=float(timeout),
+        max_tokens=config["enhancement"].get("max_tokens_output", 400),
     )
     return provider.enhance(prompt, system_prompt)
 

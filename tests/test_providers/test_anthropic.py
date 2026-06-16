@@ -60,6 +60,26 @@ def test_claude_enhance_sends_correct_params(
     )
 
 
+def test_claude_uses_configured_max_tokens(mocker: MockerFixture) -> None:
+    """A configured max_tokens is forwarded to the API."""
+    mock_client = mocker.MagicMock()
+    mock_client.messages.create.return_value = mocker.MagicMock(
+        content=[_text_block("result")]
+    )
+    mocker.patch(
+        "promptune.providers.anthropic.anthropic.Anthropic",
+        return_value=mock_client,
+    )
+
+    provider = ClaudeProvider(
+        api_key="k", model="m", max_tokens=400
+    )
+    provider.enhance("p", "s")
+
+    _, kwargs = mock_client.messages.create.call_args
+    assert kwargs["max_tokens"] == 400
+
+
 def test_claude_api_error_handling(mocker: MockerFixture) -> None:
     """API error raises ProviderError."""
     mock_client = mocker.MagicMock()

@@ -18,9 +18,11 @@ class ClaudeProvider(BaseProvider):
         api_key: str,
         model: str,
         timeout: float = 30.0,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(api_key=api_key, model=model, **kwargs)
+        self.max_tokens = max_tokens or 4096
         self._client = anthropic.Anthropic(
             api_key=api_key,
             timeout=timeout,
@@ -31,7 +33,7 @@ class ClaudeProvider(BaseProvider):
         try:
             response = self._client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=self.max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
             )
