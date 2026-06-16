@@ -42,13 +42,14 @@ SERVICE_TEMPLATE = """\
 [Unit]
 Description=Promptune Prompt Enhancement Daemon
 After=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=3
 MemoryMax=256M
 EnvironmentFile=-{env_file}
 

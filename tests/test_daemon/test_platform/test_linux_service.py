@@ -101,6 +101,12 @@ class TestLinuxService:
         assert "[Install]" in SERVICE_TEMPLATE
         assert "promptune" in SERVICE_TEMPLATE.lower()
 
+    def test_start_limit_directives_in_unit_section(self) -> None:
+        unit, _, rest = SERVICE_TEMPLATE.partition("[Service]")
+        assert "StartLimitBurst" in unit
+        assert "StartLimitIntervalSec" in unit
+        assert "StartLimit" not in rest
+
 
 class TestDetectPackageManager:
     def test_apt(self) -> None:

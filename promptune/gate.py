@@ -55,7 +55,9 @@ def run_gate(prompt: str, config: dict[str, Any]) -> int:
     if len(words) < auto_cfg.get("min_words", 5):
         return 0
 
-    threshold = auto_cfg.get("threshold", 60)
+    threshold = auto_cfg.get("threshold", 40)
+    # Compare the same number `promptune score` prints as PQS (ScoreResult
+    # .total), so a threshold calibrated from the CLI behaves as expected.
     score_before = score_prompt(prompt)
 
     if score_before.total >= threshold:

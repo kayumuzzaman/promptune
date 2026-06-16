@@ -50,6 +50,10 @@ def _handle_message(
         with state.lock:
             state.last_cwd = cwd
             state.last_project_root = project_root
+        # Ack so the client doesn't block on its recv timeout waiting for a
+        # reply that depends on connection-close timing.
+        with contextlib.suppress(OSError):
+            conn.sendall(json.dumps({"ok": True}).encode())
 
     elif action == "status":
         with state.lock:
@@ -86,10 +90,14 @@ def start_ipc_server(state: DaemonState) -> threading.Thread:
     server_sock = socket.socket(
         socket.AF_UNIX, socket.SOCK_STREAM
     )
-    server_sock.bind(str(SOCKET_PATH))
-    SOCKET_PATH.chmod(0o700)
-    server_sock.listen(5)
-    server_sock.settimeout(1.0)
+    try:
+        server_sock.bind(str(SOCKET_PATH))
+        SOCKET_PATH.chmod(0o700)
+        server_sock.listen(5)
+        server_sock.settimeout(1.0)
+    except OSError:
+        server_sock.close()
+        raise
 
     def _serve() -> None:
         try:
@@ -115,6 +123,8 @@ def start_ipc_server(state: DaemonState) -> threading.Thread:
         finally:
             with contextlib.suppress(OSError):
                 server_sock.close()
+            with contextlib.suppress(OSError):
+                SOCKET_PATH.unlink()
 
     thread = threading.Thread(
         target=_serve, daemon=True, name="ipc-server"

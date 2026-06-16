@@ -8,6 +8,7 @@ import readchar
 from prompt_toolkit import prompt as pt_prompt
 from rich.columns import Columns
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 from promptune.context import ContextFingerprint
@@ -90,12 +91,12 @@ def display_enhancement(
     console = Console()
 
     original_panel = Panel(
-        original,
+        escape(original),
         title="Original",
         border_style="dim",
     )
     enhanced_panel = Panel(
-        enhanced,
+        escape(enhanced),
         title="Enhanced",
         border_style="green",
     )
@@ -137,11 +138,14 @@ def _render_quality_toggle(
 ) -> str:
     """Render quality score breakdown."""
     delta_overall = pqs_after.overall - pqs_before.overall
+    delta_str = (
+        f"+{delta_overall}" if delta_overall >= 0 else str(delta_overall)
+    )
     lines: list[str] = []
     lines.append(
         f"  Quality: {pqs_before.overall} "
         f"\u2500\u2500\u25b6 {pqs_after.overall}  "
-        f"(+{delta_overall})"
+        f"({delta_str})"
     )
     lines.append("")
 
@@ -238,12 +242,12 @@ def _render_panels(
 ) -> None:
     """Render original and enhanced panels."""
     original_panel = Panel(
-        result.original,
+        escape(result.original),
         title="Original",
         border_style="dim",
     )
     enhanced_panel = Panel(
-        result.enhanced,
+        escape(result.enhanced),
         title="Enhanced",
         border_style="green",
     )
@@ -292,7 +296,8 @@ def display_result(result: EnhanceResult) -> str | None:
             )
         if show_context:
             console.print(
-                _render_context_toggle(result.context)
+                _render_context_toggle(result.context),
+                markup=False,
             )
 
         if expanded:

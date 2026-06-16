@@ -14,6 +14,7 @@ from promptune.providers import (
     BaseProvider,
     ProviderError,
     ProviderRegistry,
+    redact_secrets,
 )
 
 
@@ -26,9 +27,11 @@ class LocalProvider(BaseProvider):
         host: str = "http://localhost:11434",
         api_key: str = "",
         timeout: float = 30.0,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(api_key=api_key, model=model, **kwargs)
+        self.max_tokens = max_tokens
         self.host = host.rstrip("/")
         self._headers: dict[str, str] = {
             "Content-Type": "application/json"
@@ -39,24 +42,25 @@ class LocalProvider(BaseProvider):
 
     def enhance(self, prompt: str, system_prompt: str) -> str:
         """Send prompt to local LLM and return enhanced text."""
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+        }
+        if self.max_tokens is not None:
+            body["max_tokens"] = self.max_tokens
         try:
             with httpx.Client(
                 headers=self._headers, timeout=self._timeout
             ) as client:
                 response = client.post(
                     f"{self.host}/v1/chat/completions",
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": system_prompt,
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                    },
+                    json=body,
                 )
                 response.raise_for_status()
+                data = response.json()
         except httpx.ConnectError as e:
             raise ProviderError(
                 f"Cannot connect to local LLM at {self.host}. "
@@ -69,9 +73,10 @@ class LocalProvider(BaseProvider):
                 f"(cold start). Error: {e}"
             ) from e
         except Exception as e:
-            raise ProviderError(str(e)) from e
+            raise ProviderError(
+                redact_secrets(str(e), self.api_key)
+            ) from e
 
-        data = response.json()
         choices = data.get("choices", [])
         if not choices:
             raise ProviderError("Empty response from local LLM")

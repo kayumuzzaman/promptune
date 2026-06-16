@@ -66,6 +66,35 @@ def test_store_schema_version(
     assert version == 1
 
 
+def test_store_reopen_at_current_version_is_idempotent(tmp_path) -> None:
+    """Reopening a DB already at the current schema version is a no-op."""
+    db_path = tmp_path / "history.db"
+    HistoryStore(db_path=db_path).close()
+    # Reopen: version already == _SCHEMA_VERSION, migration loop must not run.
+    with HistoryStore(db_path=db_path):
+        conn = sqlite3.connect(db_path)
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        conn.close()
+        assert version == 1
+
+
+def test_store_does_not_downgrade_newer_schema(tmp_path) -> None:
+    """A DB from a newer Promptune is left at its version, not stamped down."""
+    db_path = tmp_path / "history.db"
+    HistoryStore(db_path=db_path).close()
+    # Simulate a newer build having bumped the schema.
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA user_version = 99")
+    conn.commit()
+    conn.close()
+
+    with HistoryStore(db_path=db_path):
+        conn = sqlite3.connect(db_path)
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        conn.close()
+        assert version == 99
+
+
 def test_store_wal_mode(store: HistoryStore) -> None:
     """DB uses WAL journal mode."""
     conn = sqlite3.connect(store.db_path)

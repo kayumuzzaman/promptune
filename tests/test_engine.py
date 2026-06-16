@@ -18,7 +18,7 @@ def mock_config() -> dict:
             "format_style": "auto",
             "model_claude": "claude-haiku-4-5-20251001",
             "model_openai": "gpt-4o-mini",
-            "model_openrouter": "anthropic/claude-haiku",
+            "model_openrouter": "anthropic/claude-haiku-4.5",
         },
         "api_keys": {
             "claude": "sk-ant-test",

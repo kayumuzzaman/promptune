@@ -30,7 +30,7 @@ default = "claude"
 format_style = "auto"
 model_claude = "claude-haiku-4-5-20251001"
 model_openai = "gpt-4o-mini"
-model_openrouter = "anthropic/claude-haiku"
+model_openrouter = "anthropic/claude-haiku-4.5"
 
 [api_keys]
 claude = "sk-ant-test-key"
@@ -97,7 +97,7 @@ def test_default_config_models(config_file: Path) -> None:
     config = load_config(config_path=config_file)
     assert config["provider"]["model_claude"] == "claude-haiku-4-5-20251001"
     assert config["provider"]["model_openai"] == "gpt-4o-mini"
-    assert config["provider"]["model_openrouter"] == "anthropic/claude-haiku"
+    assert config["provider"]["model_openrouter"] == "anthropic/claude-haiku-4.5"
 
 
 def test_default_config_local_llm(config_file: Path) -> None:
@@ -417,3 +417,16 @@ def test_loaded_config_includes_daemon_defaults(tmp_path: Path) -> None:
     cfg = load_config(config_file, validate_keys=False)
     assert "daemon" in cfg
     assert cfg["daemon"]["hotkey"] == "ctrl+shift+e"
+
+
+def test_generate_default_config_round_trips() -> None:
+    """Generated TOML parses back to the full DEFAULT_CONFIG."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11
+        import tomli as tomllib
+
+    from promptune.config import DEFAULT_CONFIG, generate_default_config
+
+    parsed = tomllib.loads(generate_default_config())
+    assert parsed == DEFAULT_CONFIG

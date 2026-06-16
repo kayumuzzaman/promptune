@@ -95,6 +95,13 @@ class TestTranslateKey:
     def test_raw_passthrough_fish_native(self) -> None:
         assert _translate_key("\\ce", "fish") == "\\ce"
 
+    def test_unsupported_modifier_raises(self) -> None:
+        import pytest
+
+        for combo in ("shift+e", "super+e", "cmd+e"):
+            with pytest.raises(ValueError, match="Unsupported"):
+                _translate_key(combo, "zsh")
+
 
 
 class TestGenerateZshWidget:
@@ -322,11 +329,16 @@ class TestIPCReporting:
         assert "socat" in script
 
     def test_ipc_is_nonblocking(self) -> None:
-        """IPC line runs in background (&) and suppresses errors."""
+        """IPC line runs in background (&) and discards both stdout/stderr.
+
+        stdout must be discarded too: the daemon acks ``report_cwd`` over the
+        socket, and ``socat -`` would otherwise print that ack into the
+        user's prompt.
+        """
         for gen, key in [
             (_generate_zsh_widget, "'^E'"),
             (_generate_bash_widget, '"\\C-e"'),
             (_generate_fish_widget, "\\ce"),
         ]:
             script = gen(key)
-            assert "2>/dev/null &" in script
+            assert ">/dev/null 2>&1 &" in script

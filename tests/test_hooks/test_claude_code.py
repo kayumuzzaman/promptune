@@ -80,6 +80,75 @@ class TestClaudeCodeInstall:
         assert data["theme"] == "dark"
         assert "UserPromptSubmit" in data["hooks"]
 
+    def test_is_installed_tolerates_non_dict_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {"hooks": {"UserPromptSubmit": ["shorthand", {"foo": 1}]}}
+            )
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        # Must not raise AttributeError on the bare-string entry.
+        assert installer.is_installed() is False
+
+    def test_is_installed_tolerates_corrupt_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Read-only status check returns False on corrupt JSON, not raises.
+
+        ``promptune doctor`` calls is_installed(); a broken settings file must
+        report "not installed" instead of aborting the diagnostic.
+        """
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text("{ not valid json")
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        assert installer.is_installed() is False
+        assert installer.is_mcp_installed() is False
+
+    def test_is_installed_tolerates_null_hooks(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {"hooks": {"UserPromptSubmit": [{"matcher": "", "hooks": None}]}}
+            )
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        # "hooks": null must not raise TypeError.
+        assert installer.is_installed() is False
+
+    def test_install_refuses_to_clobber_corrupt_settings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from promptune.hooks import HookConfigError
+
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text("{ not valid json ")
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        with pytest.raises(HookConfigError):
+            installer.install()
+        # Original (corrupt) file is left untouched, not overwritten.
+        assert settings_path.read_text() == "{ not valid json "
+
     def test_is_installed_returns_true_after_install(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -118,6 +187,21 @@ class TestClaudeCodeInstall:
         )
         installer = ClaudeCodeInstaller()
         installer.uninstall()  # should not raise
+
+    def test_uninstall_leaves_malformed_dict_config_untouched(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A dict-shaped UserPromptSubmit must not be rewritten into a list."""
+        settings_path = tmp_path / "settings.json"
+        original = {"hooks": {"UserPromptSubmit": {"matcher": "", "hooks": []}}}
+        settings_path.write_text(json.dumps(original))
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        installer.uninstall()
+        assert json.loads(settings_path.read_text()) == original
 
     def test_install_idempotent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

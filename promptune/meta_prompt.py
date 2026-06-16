@@ -59,9 +59,25 @@ _STACK_KEYWORDS: dict[str, list[str]] = {
     "react": ["react", "jsx", "tsx", "nextjs"],
     "flask": ["flask"],
     "django": ["django"],
-    "go": ["golang", "go "],
+    "go": ["golang", "goroutine", "go.mod"],
     "rust": ["rust", "cargo"],
 }
+
+
+def _keyword_matches(text: str, kw: str) -> bool:
+    """Whole-word keyword match that also accepts regular English inflections.
+
+    Anchored at a word boundary (so "api" never matches inside "rapidly"), it
+    additionally accepts plurals and verb forms — ``-s``/``-es``/``-ed``/
+    ``-ing`` — including single-consonant doubling like ``debug`` -> ``debugging``
+    and ``program`` -> ``programming``. It does not cover spelling-changing
+    forms such as ``create`` -> ``creating``.
+    """
+    if not kw:
+        return False
+    last = re.escape(kw[-1])
+    pattern = rf"\b{re.escape(kw)}(?:{last}?(?:ing|ed)|e?s)?\b"
+    return re.search(pattern, text) is not None
 
 
 def detect_intent(prompt: str) -> str:
@@ -70,7 +86,7 @@ def detect_intent(prompt: str) -> str:
     scores: dict[str, int] = {intent: 0 for intent in _INTENT_KEYWORDS}
     for intent, keywords in _INTENT_KEYWORDS.items():
         for kw in keywords:
-            if kw in lower:
+            if _keyword_matches(lower, kw):
                 scores[intent] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"
@@ -82,7 +98,7 @@ def detect_domain(prompt: str) -> str:
     scores: dict[str, int] = {domain: 0 for domain in _DOMAIN_KEYWORDS}
     for domain, keywords in _DOMAIN_KEYWORDS.items():
         for kw in keywords:
-            if kw in lower:
+            if _keyword_matches(lower, kw):
                 scores[domain] += 1
     best = max(scores, key=lambda k: scores[k])
     return best if scores[best] > 0 else "general"
@@ -94,7 +110,7 @@ def detect_stack(prompt: str) -> list[str]:
     found: list[str] = []
     for tech, keywords in _STACK_KEYWORDS.items():
         for kw in keywords:
-            if re.search(r'\b' + re.escape(kw) + r'\b', lower):
+            if _keyword_matches(lower, kw):
                 if tech not in found:
                     found.append(tech)
                 break

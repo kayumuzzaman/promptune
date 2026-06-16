@@ -206,19 +206,20 @@ class TestGetFrontmostApp:
 
 
 class TestCopySelection:
-    def test_calls_simulate_cmd_c_then_save_clipboard(self) -> None:
-        """copy_selection simulates Cmd+C, sleeps, then reads clipboard."""
-        mock_quartz = MagicMock()
-        mock_quartz.kCGEventSourceStateHIDSystemState = 1
-        mock_quartz.kCGEventFlagMaskCommand = 0x100000
-        mock_quartz.kCGHIDEventTap = 0
-        mock_quartz.CGEventSourceCreate.return_value = MagicMock()
-        mock_quartz.CGEventCreateKeyboardEvent.return_value = MagicMock()
+    def test_captures_previous_then_clears_copies_and_reads(self) -> None:
+        """copy_selection saves the prior clipboard, clears it, then Cmd+C/reads.
 
-        mock_result = MagicMock()
-        mock_result.stdout = "selected text"
-
+        The prior value must be captured *before* the clear so an empty
+        selection can be restored, so save_clipboard precedes Cmd+C.
+        """
         call_order: list[str] = []
+
+        def fake_save() -> str:
+            call_order.append("save_clipboard")
+            return "old clipboard"
+
+        def fake_clear(_: str) -> None:
+            call_order.append("clear")
 
         def fake_cmd_c() -> None:
             call_order.append("cmd_c")
@@ -226,19 +227,84 @@ class TestCopySelection:
         def fake_sleep(_: float) -> None:
             call_order.append("sleep")
 
-        def fake_save() -> str:
-            call_order.append("save_clipboard")
+        def fake_read() -> str:
+            call_order.append("read")
             return "selected text"
 
         with (
+            patch("promptune.daemon.clipboard.save_clipboard", fake_save),
+            patch("promptune.daemon.clipboard.write_clipboard", fake_clear),
             patch("promptune.daemon.clipboard.simulate_cmd_c", fake_cmd_c),
             patch("promptune.daemon.clipboard.time.sleep", fake_sleep),
-            patch("promptune.daemon.clipboard.save_clipboard", fake_save),
+            patch(
+                "promptune.daemon.clipboard._read_clipboard_raising", fake_read
+            ),
         ):
             result = clipboard.copy_selection()
 
-        assert call_order == ["cmd_c", "sleep", "save_clipboard"]
+        assert call_order == [
+            "save_clipboard",
+            "clear",
+            "cmd_c",
+            "sleep",
+            "read",
+        ]
         assert result == "selected text"
+
+    def test_does_not_clear_non_text_clipboard(self) -> None:
+        """An image/empty clipboard (pbpaste -> "") must not be cleared/wiped."""
+        writes: list[str] = []
+
+        with (
+            patch(
+                "promptune.daemon.clipboard.save_clipboard",
+                return_value="",
+            ),
+            patch(
+                "promptune.daemon.clipboard.write_clipboard",
+                side_effect=lambda v: writes.append(v),
+            ),
+            patch("promptune.daemon.clipboard.simulate_cmd_c"),
+            patch("promptune.daemon.clipboard.time.sleep"),
+            patch(
+                "promptune.daemon.clipboard._read_clipboard_raising",
+                return_value="",
+            ),
+        ):
+            result = clipboard.copy_selection()
+
+        assert result is None
+        # No clearing write happened, so the non-text clipboard is preserved.
+        assert writes == []
+
+    def test_restores_clipboard_when_read_fails(self) -> None:
+        """A failed read after the clear must restore the prior clipboard."""
+        restored: list[str] = []
+
+        def fake_clear(value: str) -> None:
+            if value:
+                restored.append(value)
+
+        def boom() -> str:
+            raise RuntimeError("pbpaste missing")
+
+        with (
+            patch(
+                "promptune.daemon.clipboard.save_clipboard",
+                return_value="precious",
+            ),
+            patch("promptune.daemon.clipboard.write_clipboard", fake_clear),
+            patch("promptune.daemon.clipboard.simulate_cmd_c"),
+            patch("promptune.daemon.clipboard.time.sleep"),
+            patch(
+                "promptune.daemon.clipboard._read_clipboard_raising",
+                side_effect=boom,
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            clipboard.copy_selection()
+
+        assert restored == ["precious"]
 
     def test_sleep_duration_matches_settle_ms(self) -> None:
         """copy_selection sleeps for CLIPBOARD_SETTLE_MS / 1000 seconds."""

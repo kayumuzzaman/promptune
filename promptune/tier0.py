@@ -212,6 +212,7 @@ def rule_negation_rewrite(
         (r"don'?t forget\b", "remember to"),
         (r"don'?t ignore\b", "pay attention to"),
         (r"never use\b", "avoid"),
+        (r"do not use\b", "avoid using"),
         (r"do not\b", "avoid"),
     ]
 
@@ -297,7 +298,7 @@ def rule_code_delimiters(
             code_buffer.append(line)
         elif in_code and (
             is_code_line
-            or line.strip().startswith((' ', '\t'))
+            or line.startswith((' ', '\t'))
         ):
             code_buffer.append(line)
         else:

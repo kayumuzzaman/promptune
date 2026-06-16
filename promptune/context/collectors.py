@@ -67,6 +67,14 @@ def _run_git(
     return result.stdout.strip()
 
 
+def _safe_git(args: tuple[str, ...], timeout: float = 0.3) -> str:
+    """Run a git command, returning '' on any failure or timeout."""
+    try:
+        return _run_git(args, timeout=timeout)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return ""
+
+
 def _find_history_file() -> Path | None:
     """Find the shell history file."""
     home = Path.home()
@@ -96,54 +104,31 @@ def _get_project_root() -> Path:
 
 
 def collect_git() -> GitContext:
-    """Collect git context signals."""
-    try:
-        branch = _run_git(("branch", "--show-current"))
-        log_output = _run_git(
-            ("log", "--format=%h|%ar|%s", "-5")
-        )
-        recent_commits = [
-            line
-            for line in log_output.splitlines()
-            if line.strip()
-        ]
-        status_output = _run_git(
-            ("status", "--porcelain", "-uno")
-        )
-        modified_files = [
-            line[2:].strip()
-            for line in status_output.splitlines()
-            if line.strip()
-        ]
-        diff_stats = _run_git(("diff", "--shortstat"))
-        stash_output = _run_git(("stash", "list"))
-        stash_count = len(
-            [
-                line
-                for line in stash_output.splitlines()
-                if line.strip()
-            ]
-        )
+    """Collect git context signals; each signal degrades independently."""
+    branch = _safe_git(("branch", "--show-current"))
+    log_output = _safe_git(("log", "--format=%h|%ar|%s", "-5"))
+    recent_commits = [
+        line for line in log_output.splitlines() if line.strip()
+    ]
+    status_output = _safe_git(("status", "--porcelain", "-uno"))
+    modified_files = [
+        line[2:].strip()
+        for line in status_output.splitlines()
+        if line.strip()
+    ]
+    diff_stats = _safe_git(("diff", "--shortstat"))
+    stash_output = _safe_git(("stash", "list"))
+    stash_count = len(
+        [line for line in stash_output.splitlines() if line.strip()]
+    )
 
-        return GitContext(
-            branch=branch,
-            recent_commits=recent_commits,
-            modified_files=modified_files,
-            diff_stats=diff_stats,
-            stash_count=stash_count,
-        )
-    except (
-        subprocess.SubprocessError,
-        FileNotFoundError,
-        OSError,
-    ):
-        return GitContext(
-            branch="",
-            recent_commits=[],
-            modified_files=[],
-            diff_stats="",
-            stash_count=0,
-        )
+    return GitContext(
+        branch=branch,
+        recent_commits=recent_commits,
+        modified_files=modified_files,
+        diff_stats=diff_stats,
+        stash_count=stash_count,
+    )
 
 
 def collect_shell_history(

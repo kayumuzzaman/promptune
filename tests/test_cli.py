@@ -269,6 +269,39 @@ def test_config_set_key(mocker, tmp_path) -> None:
     assert result.exit_code == 0
 
 
+def test_config_set_key_rejects_unknown_provider(mocker, tmp_path) -> None:
+    """config --set-key validates the provider name."""
+    config_file = tmp_path / "config.toml"
+    mocker.patch(
+        "promptune.cli._get_config_path",
+        return_value=config_file,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["config", "--set-key", "clade", "sk-ant-test123"],
+    )
+    assert result.exit_code != 0
+    assert "Unknown provider" in result.output
+    assert not config_file.exists()
+
+
+def test_config_flags_mutually_exclusive(mocker, tmp_path) -> None:
+    """Passing two of --set-key/--set-tier/--reset is rejected."""
+    config_file = tmp_path / "config.toml"
+    mocker.patch(
+        "promptune.cli._get_config_path",
+        return_value=config_file,
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["config", "--reset", "--set-tier", "1"]
+    )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
 def test_config_set_tier(mocker, tmp_path) -> None:
     """config --set-tier updates max_tier."""
     config_file = tmp_path / "config.toml"
@@ -444,6 +477,16 @@ class TestGateCommand:
             input=json.dumps({"session_id": "abc"}),
         )
         assert result.exit_code == 0
+
+    def test_gate_passes_on_non_dict_json(self, mocker) -> None:
+        mocker.patch("promptune.cli.run_gate")
+        runner = CliRunner()
+        for payload in ('"hello"', "[1, 2]", "42"):
+            result = runner.invoke(main, ["gate"], input=payload)
+            assert result.exit_code == 0, payload
+            assert result.exception is None or isinstance(
+                result.exception, SystemExit
+            )
 
 
 # --- Local LLM status ---

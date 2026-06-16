@@ -93,7 +93,7 @@ def dedup_check(
             else:
                 best_enhanced = entry.enhanced
 
-    if best_score >= threshold and best_enhanced is not None:
+    if best_score >= threshold and best_enhanced:
         return DedupHit(
             enhanced=best_enhanced,
             similarity=best_score,

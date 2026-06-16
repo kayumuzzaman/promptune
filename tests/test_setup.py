@@ -110,7 +110,7 @@ class TestWriteConfig:
                 "format_style": "markdown",
                 "model_claude": "claude-haiku-4-5-20251001",
                 "model_openai": "gpt-4o-mini",
-                "model_openrouter": "anthropic/claude-haiku",
+                "model_openrouter": "anthropic/claude-haiku-4.5",
             },
             "api_keys": {
                 "claude": "",
@@ -253,11 +253,11 @@ class TestPromptModel:
         assert result == "gpt-4o"
 
     def test_prefills_default_model(self) -> None:
-        default = "anthropic/claude-haiku"
+        default = "anthropic/claude-haiku-4.5"
         with patch("click.prompt", return_value=default) as mock_prompt:
             _prompt_model("openrouter", default)
         call_kwargs = mock_prompt.call_args[1] if mock_prompt.call_args[1] else {}
-        assert call_kwargs.get("default") == "anthropic/claude-haiku"
+        assert call_kwargs.get("default") == "anthropic/claude-haiku-4.5"
 
     def test_keeps_default_on_enter(self) -> None:
         with patch("click.prompt", return_value="claude-haiku-4-5-20251001"):
@@ -266,7 +266,7 @@ class TestPromptModel:
 
     def test_prompt_text_contains_provider(self) -> None:
         with patch("click.prompt", return_value="some-model") as mock_prompt:
-            _prompt_model("openrouter", "anthropic/claude-haiku")
+            _prompt_model("openrouter", "anthropic/claude-haiku-4.5")
         prompt_text = mock_prompt.call_args[0][0]
         assert "openrouter" in prompt_text.lower() or "model" in prompt_text.lower()
 

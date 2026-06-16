@@ -251,6 +251,57 @@ def test_tui_header_shows_provider_for_tier2() -> None:
     assert "claude" in header.lower()
 
 
+def test_tui_panels_do_not_crash_on_markup_brackets() -> None:
+    """User text with [..] must not be parsed as Rich markup (no crash)."""
+    import dataclasses
+    import io
+
+    from rich.console import Console
+
+    from promptune.tui import _render_panels
+
+    result = dataclasses.replace(
+        _make_enhance_result(),
+        original="paths like [/usr/bin] and [INSERT]",
+        enhanced="close tag [/] and a [red]color[/red] token",
+    )
+    console = Console(file=io.StringIO(), width=120)
+    _render_panels(console, result)  # must not raise MarkupError
+    out = console.file.getvalue()
+    assert "/usr/bin" in out and "INSERT" in out
+
+
+def test_tui_context_toggle_safe_with_bracket_branch() -> None:
+    """A git branch with markup-like brackets must not crash rendering."""
+    import io
+
+    from rich.console import Console
+
+    from promptune.tui import _render_context_toggle
+
+    ctx = ContextFingerprint(
+        git=GitContext(
+            branch="feat/[/]",
+            recent_commits=[],
+            modified_files=[],
+            diff_stats="",
+            stash_count=0,
+        ),
+        shell=ShellHistoryContext(
+            recent_commands=[], error_patterns=[], session_intent=""
+        ),
+        tech=TechStackContext(
+            languages=["[bold]python"], frameworks=[], package_manager=None
+        ),
+        env=EnvironmentContext(
+            in_venv=False, in_container=False, in_ci=False, in_ssh=False
+        ),
+    )
+    console = Console(file=io.StringIO(), width=120)
+    console.print(_render_context_toggle(ctx), markup=False)
+    assert "feat/[/]" in console.file.getvalue()
+
+
 # --- Quality toggle (Q) ---
 
 
@@ -274,6 +325,28 @@ def test_tui_quality_toggle_shows_delta() -> None:
     pqs_after = compute_pqs(result.score_after)
     output = _render_quality_toggle(pqs_before, pqs_after)
     assert "+" in output or "\u25b6" in output
+
+
+def test_tui_quality_toggle_negative_delta_sign() -> None:
+    """A score decrease renders a single minus sign, not (+-N)."""
+    from promptune.pqs import DimensionDisplay, PQScore
+
+    def _pq(overall: int) -> PQScore:
+        dim = DimensionDisplay(
+            score=overall, color="green", bar="x", suggestion=""
+        )
+        return PQScore(
+            clarity=dim,
+            specificity=dim,
+            context=dim,
+            structure=dim,
+            actionability=dim,
+            overall=overall,
+        )
+
+    output = _render_quality_toggle(_pq(80), _pq(72))
+    assert "(-8)" in output
+    assert "+-" not in output
 
 
 # --- Details toggle (D) ---

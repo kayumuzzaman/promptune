@@ -22,6 +22,21 @@ def test_base_provider_is_abstract() -> None:
         BaseProvider(api_key="k", model="m")  # type: ignore[abstract]
 
 
+class OtherProvider(BaseProvider):
+    def enhance(self, prompt: str, system_prompt: str) -> str:
+        return prompt
+
+
+def test_registry_warns_on_clobber() -> None:
+    """Re-registering a name with a different class warns; same class is silent."""
+    registry = ProviderRegistry()
+    registry.register("p", FakeProvider)
+    registry.register("p", FakeProvider)  # identical: no warning
+    with pytest.warns(UserWarning, match="Overwriting"):
+        registry.register("p", OtherProvider)
+    assert registry.get("p") is OtherProvider
+
+
 def test_base_provider_has_enhance_method() -> None:
     """ABC defines enhance() method."""
     assert hasattr(BaseProvider, "enhance")

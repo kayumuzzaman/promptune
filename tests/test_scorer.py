@@ -1,6 +1,23 @@
 """Quality Scorer tests."""
 
-from promptune.scorer import DimensionScore, ScoreResult, score_prompt
+from promptune.scorer import (
+    DimensionScore,
+    ScoreResult,
+    _detect_intent,
+    score_prompt,
+)
+
+
+def test_detect_intent_matches_regular_plurals() -> None:
+    """Plural coding keywords still count (e.g. 'tests' -> 'test')."""
+    assert _detect_intent("write tests") == "coding"
+    assert _detect_intent("add api endpoints") == "coding"
+
+
+def test_detect_intent_matches_verb_inflections() -> None:
+    """Scorer shares the inflection-aware matcher (debugging/classes/...)."""
+    assert _detect_intent("debugging the parser") == "coding"
+    assert _detect_intent("write classes for the model") == "coding"
 
 
 def test_score_result_dataclass() -> None:
@@ -75,6 +92,15 @@ def test_clarity_penalizes_negation() -> None:
     pos_score = positive.dimensions["clarity"].score
     neg_score = negative.dimensions["clarity"].score
     assert pos_score >= neg_score
+
+
+def test_clarity_constraint_no_more_than_not_penalized() -> None:
+    """The constraint phrase 'no more than' is not counted as a negation."""
+    result = score_prompt(
+        "Return a summary in no more than 100 words using Python"
+    )
+    signals = result.dimensions["clarity"].signals
+    assert not any("negation" in s for s in signals)
 
 
 def test_structure_detects_markdown() -> None:
@@ -158,6 +184,14 @@ def test_intent_detection_research() -> None:
     """Research intent detected for research prompts."""
     result = score_prompt("explain how DNS resolution works")
     assert result.intent == "research"
+
+
+def test_intent_detection_ignores_substring_matches() -> None:
+    """Keywords match whole words, not substrings (api vs capital)."""
+    result = score_prompt(
+        "write an essay about capital punishment for my blog"
+    )
+    assert result.intent == "writing"
 
 
 def test_score_calibration_prevents_clustering() -> None:

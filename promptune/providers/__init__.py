@@ -10,6 +10,14 @@ class ProviderError(Exception):
     """Raised when a provider encounters an error."""
 
 
+def redact_secrets(message: str, *secrets: str) -> str:
+    """Replace any known secret values in an error message with a marker."""
+    for secret in secrets:
+        if secret:
+            message = message.replace(secret, "[REDACTED]")
+    return message
+
+
 class ProviderNotFoundError(Exception):
     """Raised when a requested provider is not registered."""
 
@@ -34,6 +42,15 @@ class ProviderRegistry:
 
     def register(self, name: str, cls: type[BaseProvider]) -> None:
         """Register a provider class by name."""
+        existing = self._providers.get(name)
+        if existing is not None and existing is not cls:
+            import warnings
+
+            warnings.warn(
+                f"Overwriting registered provider {name!r}: "
+                f"{existing.__name__} -> {cls.__name__}",
+                stacklevel=2,
+            )
         self._providers[name] = cls
 
     def get(self, name: str) -> type[BaseProvider]:

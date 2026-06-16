@@ -30,11 +30,11 @@ class EditPattern:
 
 
 _ROLE_PREFIXES = re.compile(
-    r"^You are (?:a |an )?[\w\s]+\.\s*",
+    r"^You are (?:a |an )?[\w\s/-]+\.\s*",
     re.IGNORECASE,
 )
 _FORMAT_SUFFIXES = re.compile(
-    r"\n\n(?:Respond |Structure |Provide )[\w\s]+\.\s*$",
+    r"\n\n(?:Respond |Structure |Provide )[\w\s/,-]+\.\s*$",
     re.IGNORECASE,
 )
 
