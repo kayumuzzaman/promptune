@@ -10,10 +10,10 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-17 |
-| Branch | fix/validation-loop-findings |
+| Branch | fix/validation-round2 |
 | Python | 3.14.3 |
-| Total Tests | 1107 |
-| Test Result | **1101 passed, 6 skipped, 0 failed** |
+| Total Tests | 1113 |
+| Test Result | **1107 passed, 6 skipped, 0 failed** |
 | Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
@@ -114,6 +114,21 @@
 ---
 
 ## Known Issues
+
+### -1. Multi-agent audit round 2 (2026-06-17) — 2 findings [RESOLVED]
+A second parallel sub-agent pass (after PR #14 merged) found 2 more latent
+defects; both fixed with regression tests:
+
+- **HIGH** `setup.py` — the interactive wizard pre-filled `click.prompt(type=
+  Choice, default=...)` for provider / mode / format directly from the user's
+  config. click re-validates the default even on a blank Enter, so a stale or
+  hand-edited invalid value made the wizard re-prompt forever — exactly the
+  "fix my broken config" case it exists for. Added `_clamp_choice()` to fall
+  back to the `DEFAULT_CONFIG` value when the stored default is invalid.
+- **MEDIUM** `scorer.py` — `_INTENT_KEYWORDS["coding"]` had silently drifted
+  from `meta_prompt._INTENT_KEYWORDS["coding"]` (missing application/program/
+  tool/library/package/migrate), so the two intent code paths disagreed.
+  scorer now imports meta_prompt's table directly (single source of truth).
 
 ### 0. Multi-agent codebase audit (2026-06-17) — 8 findings [RESOLVED]
 A parallel sub-agent review of the whole codebase surfaced 8 latent defects

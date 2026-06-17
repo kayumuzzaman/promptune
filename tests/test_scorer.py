@@ -186,6 +186,21 @@ def test_intent_detection_research() -> None:
     assert result.intent == "research"
 
 
+def test_detect_intent_matches_meta_prompt_for_drifted_keywords() -> None:
+    """scorer intent must agree with meta_prompt for coding keywords that the
+    old duplicate list was missing (application/program/tool/library/package/
+    migrate)."""
+    from promptune.meta_prompt import detect_intent
+
+    for prompt in (
+        "migrate the application to a new library",
+        "publish the package as a CLI program",
+        "build a tool for the team",
+    ):
+        assert _detect_intent(prompt) == "coding"
+        assert detect_intent(prompt) == _detect_intent(prompt)
+
+
 def test_intent_detection_ignores_substring_matches() -> None:
     """Keywords match whole words, not substrings (api vs capital)."""
     result = score_prompt(
