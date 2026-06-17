@@ -347,10 +347,26 @@ def _secure_write_text(config_path: Path, text: str) -> None:
     os.replace(tmp, config_path)
 
 
+_TOML_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\b": "\\b",
+    "\t": "\\t",
+    "\n": "\\n",
+    "\f": "\\f",
+    "\r": "\\r",
+}
+
+
+def _toml_escape(value: str) -> str:
+    """Escape a string for a TOML basic string (backslash, quote, controls)."""
+    return "".join(_TOML_ESCAPES.get(c, c) for c in value)
+
+
 def _toml_assignment(field: str, value: object) -> str:
     """Render a single TOML key/value assignment line."""
     if isinstance(value, str):
-        return f'{field} = "{value}"'
+        return f'{field} = "{_toml_escape(value)}"'
     return f"{field} = {value}"
 
 

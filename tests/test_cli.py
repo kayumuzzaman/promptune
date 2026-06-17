@@ -1300,6 +1300,21 @@ def test_update_config_value_adds_missing_key(tmp_path):
     assert 'model = "gpt-4o"' in content
 
 
+def test_update_config_value_escapes_special_chars(tmp_path):
+    """A value with quotes/backslashes round-trips through the TOML parser."""
+    import tomllib
+
+    from promptune.cli import _update_config_value
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[api_keys]\nclaude = ""\n')
+    nasty = 'sk-"; evil = "x\\y'
+    _update_config_value(cfg, "api_keys.claude", nasty)
+    parsed = tomllib.loads(cfg.read_text())
+    assert parsed["api_keys"]["claude"] == nasty
+    assert "evil" not in parsed["api_keys"]
+
+
 # ── History: disabled, preferences empty ─────────────────────
 
 
