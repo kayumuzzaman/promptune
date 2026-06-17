@@ -19,11 +19,20 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
         r"Bearer\s+[a-zA-Z0-9._-]{20,}",
         re.IGNORECASE,
     ),
+    # JSON Web Tokens (header.payload.signature). The base64url header is
+    # low-entropy and can slip past the entropy heuristic, so match the
+    # structure explicitly.
+    re.compile(
+        r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
+    ),
     # Any URL carrying basic-auth userinfo (scheme://user:pass@): covers
     # postgres, postgresql, mysql, mongodb, redis, amqp(s), mssql, http(s),
-    # ftp, etc. — redacts the credential-bearing prefix.
+    # ftp, etc. — redacts the credential-bearing prefix. The userinfo classes
+    # exclude only '/' and whitespace (not ':'/'@'), so they stay within the
+    # authority component yet span passwords that themselves contain '@',
+    # redacting the whole credential rather than leaking a fragment.
     re.compile(
-        r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^:/@\s]+:[^@/\s]+@",
+        r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s]*:[^/\s]*@",
         re.IGNORECASE,
     ),
     # PEM private-key blocks (markers + body, any body length).

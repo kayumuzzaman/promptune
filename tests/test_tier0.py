@@ -295,3 +295,22 @@ def test_apply_rules_idempotent_on_good_prompt() -> None:
     score = score_prompt(prompt)
     result = apply_rules(prompt, score)
     assert len(result.rules_applied) <= 3
+
+
+def test_politeness_removal_preserves_newlines_and_structure() -> None:
+    """Removing a politeness phrase must not flatten multi-line structure."""
+    score = _low_conciseness_score()
+    prompt = (
+        "Please implement this:\n\n"
+        "- parse the file\n"
+        "- validate rows\n\n"
+        "```\ndef run():\n    return 1\n```"
+    )
+    result = rule_politeness_removal(prompt, score)
+    assert result.applied is True
+    # Newlines, list items and the code block survive the cleanup.
+    assert "\n" in result.modified_prompt
+    assert "- parse the file" in result.modified_prompt
+    assert "```" in result.modified_prompt
+    assert "    return 1" in result.modified_prompt
+    assert "please" not in result.modified_prompt.lower()

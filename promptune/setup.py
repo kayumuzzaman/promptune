@@ -9,7 +9,11 @@ from typing import Any
 
 import click
 
-from promptune.config import DEFAULT_CONFIG, load_config
+from promptune.config import (
+    DEFAULT_CONFIG,
+    escape_toml_string,
+    load_config,
+)
 from promptune.hooks import detect_tools
 from promptune.providers import ProviderRegistry
 
@@ -66,7 +70,7 @@ def _format_toml_value(value: object) -> str:
     if isinstance(value, int):
         return str(value)
     if isinstance(value, str):
-        return f'"{value}"'
+        return f'"{escape_toml_string(value)}"'
     return str(value)
 
 

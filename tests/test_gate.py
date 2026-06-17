@@ -299,3 +299,21 @@ def test_gate_threshold_defaults_to_40(capsys) -> None:
         code = run_gate("a prompt with at least five words", cfg)
     assert code == 0
     assert capsys.readouterr().out == ""
+
+
+class TestRunGateNeverCrashes:
+    def test_enhance_exception_returns_zero_no_stdout(self, capsys) -> None:
+        """If enhance() raises, the hook still exits 0 with no stdout."""
+        with patch(
+            "promptune.gate.score_prompt", return_value=_make_score(10)
+        ), patch(
+            "promptune.gate.enhance", side_effect=RuntimeError("boom")
+        ):
+            code = run_gate(
+                "implement a REST API with authentication and tests",
+                _BASE_CONFIG,
+            )
+        assert code == 0
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "skipped" in captured.err

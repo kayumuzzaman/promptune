@@ -256,12 +256,28 @@ def _validate(config: dict[str, Any]) -> None:
             )
 
 
+_TOML_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\b": "\\b",
+    "\t": "\\t",
+    "\n": "\\n",
+    "\f": "\\f",
+    "\r": "\\r",
+}
+
+
+def escape_toml_string(value: str) -> str:
+    """Escape a string for a TOML basic string (backslash, quote, controls)."""
+    return "".join(_TOML_ESCAPES.get(c, c) for c in value)
+
+
 def _format_toml_value(value: Any) -> str:
     """Format a Python value as a TOML scalar."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
-        return f'"{value}"'
+        return f'"{escape_toml_string(value)}"'
     return str(value)
 
 

@@ -875,3 +875,16 @@ class TestWriteConfigEdgeCases:
         )
         assert "sk-ant-secretkey" in config_path.read_text()
         assert oct(config_path.stat().st_mode & 0o777) == "0o600"
+
+
+def test_write_config_escapes_quotes_in_api_key(tmp_path) -> None:
+    """An API key containing a quote/backslash round-trips, not corrupts."""
+    from promptune.config import load_config
+    from promptune.setup import write_config
+
+    path = tmp_path / "config.toml"
+    nasty = 'sk-ant-a"b\\c'
+    write_config(path, {"api_keys": {"claude": nasty}})
+
+    loaded = load_config(config_path=path)
+    assert loaded["api_keys"]["claude"] == nasty

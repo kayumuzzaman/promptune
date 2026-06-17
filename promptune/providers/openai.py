@@ -42,7 +42,7 @@ class OpenAIProvider(BaseProvider):
             # models still take the old parameter, so pick by model name.
             param = (
                 "max_completion_tokens"
-                if re.match(r"(o\d|gpt-5)", self.model)
+                if re.match(r"(o\d|gpt-5)", self.model, re.IGNORECASE)
                 else "max_tokens"
             )
             extra[param] = self.max_tokens

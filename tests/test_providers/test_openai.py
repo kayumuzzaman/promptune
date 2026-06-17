@@ -143,3 +143,12 @@ def test_openai_registered_in_registry() -> None:
     register(registry)
     assert "openai" in registry.list()
     assert registry.get("openai") is OpenAIProvider
+
+
+def test_openai_uppercase_reasoning_model_uses_completion_tokens(
+    mocker: MockerFixture,
+) -> None:
+    """Model-name matching is case-insensitive (e.g. 'GPT-5')."""
+    kwargs = _enhance_with_cap(mocker, "GPT-5-mini")
+    assert kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in kwargs

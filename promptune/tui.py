@@ -48,7 +48,16 @@ def _get_user_action(
 
     print(prompt_text, end="", flush=True)
     while True:
-        key = readchar.readkey().lower()
+        try:
+            key = readchar.readkey().lower()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return Action.REJECT
+        # EOF / closed stdin yields an empty string; treat as reject rather
+        # than spinning the loop forever (100% CPU) on an unmatched key.
+        if not key:
+            print()
+            return Action.REJECT
         if key == "a":
             print(key)
             return Action.ACCEPT
