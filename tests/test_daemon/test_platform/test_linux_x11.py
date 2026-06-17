@@ -42,6 +42,7 @@ from promptune.daemon.platform.linux_x11 import (
 
 # Sentinel constants used by the fake X / XK modules.
 _KEY_PRESS = 2
+_KEY_RELEASE = 3
 _GRAB_MODE_ASYNC = 1
 
 
@@ -63,6 +64,7 @@ def _make_fake_xlib(
 
     x_mod = types.ModuleType("Xlib.X")
     x_mod.KeyPress = _KEY_PRESS  # type: ignore[attr-defined]
+    x_mod.KeyRelease = _KEY_RELEASE  # type: ignore[attr-defined]
     x_mod.GrabModeAsync = _GRAB_MODE_ASYNC  # type: ignore[attr-defined]
 
     display_mod = types.ModuleType("Xlib.display")
@@ -319,6 +321,66 @@ class TestX11Hotkey:
             hk.listen()
 
         cb.assert_not_called()
+
+    def test_listen_held_key_fires_once(self) -> None:
+        """Repeated KeyPress (autorepeat) with no release fires once."""
+        hk = X11Hotkey()
+        cb = MagicMock()
+        hk.register("ctrl+shift+e", cb)
+        d = _make_display()
+
+        d.pending_events.side_effect = [1, 1, 0]
+        press = MagicMock()
+        press.type = _KEY_PRESS
+        press.detail = 38
+        d.next_event.side_effect = [press, press]
+
+        with _fake_xlib(d), patch(
+            "time.sleep", side_effect=lambda _s: hk.stop()
+        ):
+            hk.listen()
+
+        cb.assert_called_once()
+        d.set_detectable_auto_repeat.assert_called_once_with(True)
+
+    def test_listen_release_allows_refire(self) -> None:
+        """A KeyRelease between presses lets the next press fire again."""
+        hk = X11Hotkey()
+        cb = MagicMock()
+        hk.register("ctrl+shift+e", cb)
+        d = _make_display()
+
+        d.pending_events.side_effect = [1, 1, 1, 0]
+        press = MagicMock(type=_KEY_PRESS, detail=38)
+        release = MagicMock(type=_KEY_RELEASE, detail=38)
+        d.next_event.side_effect = [press, release, press]
+
+        with _fake_xlib(d), patch(
+            "time.sleep", side_effect=lambda _s: hk.stop()
+        ):
+            hk.listen()
+
+        assert cb.call_count == 2
+
+    def test_listen_detectable_autorepeat_failure_tolerated(self) -> None:
+        """If set_detectable_auto_repeat is unsupported, listen still works."""
+        hk = X11Hotkey()
+        cb = MagicMock()
+        hk.register("ctrl+shift+e", cb)
+        d = _make_display()
+        d.set_detectable_auto_repeat.side_effect = AttributeError("no xkb")
+
+        d.pending_events.side_effect = [1, 0]
+        press = MagicMock(type=_KEY_PRESS, detail=38)
+        d.next_event.return_value = press
+
+        with _fake_xlib(d), patch(
+            "time.sleep", side_effect=lambda _s: hk.stop()
+        ):
+            hk.listen()
+
+        cb.assert_called_once()
+        d.close.assert_called_once()
 
     def test_listen_already_stopped_skips_loop_but_cleans_up(self) -> None:
         hk = X11Hotkey()

@@ -146,6 +146,12 @@ def _event_callback(
 
     def _handler(proxy, event_type, event, refcon):  # type: ignore[no-untyped-def]
         if event_type == Quartz.kCGEventKeyDown:
+            # Ignore OS key-repeat events fired while the hotkey is held; only
+            # the initial press should trigger one enhancement run.
+            if Quartz.CGEventGetIntegerValueField(
+                event, Quartz.kCGKeyboardEventAutorepeat
+            ):
+                return event
             ev_keycode = Quartz.CGEventGetIntegerValueField(
                 event, Quartz.kCGKeyboardEventKeycode
             )

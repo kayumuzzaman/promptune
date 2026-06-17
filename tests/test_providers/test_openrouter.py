@@ -141,6 +141,33 @@ def test_openrouter_timeout_handling(
         provider.enhance("prompt", "system")
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        ["not", "a", "dict"],          # top-level JSON array
+        "a bare string",               # top-level JSON string
+        {"choices": "nonsense"},       # choices not a list
+        {"choices": ["plain string"]},  # choice not a dict
+        {"choices": [{"message": "oops"}]},  # message not a dict
+        {"choices": []},               # empty choices
+    ],
+)
+def test_openrouter_malformed_response_raises_provider_error(
+    mocker: MockerFixture, payload: object
+) -> None:
+    """A malformed API body degrades to ProviderError, never AttributeError."""
+    mock_response = mocker.MagicMock()
+    mock_response.json.return_value = payload
+    mock_response.raise_for_status = mocker.MagicMock()
+    _mock_httpx_client(mocker, mock_response)
+
+    provider = OpenRouterProvider(
+        api_key="k", model="m", base_url="https://openrouter.ai/api/v1"
+    )
+    with pytest.raises(ProviderError):
+        provider.enhance("prompt", "system")
+
+
 def test_openrouter_registered_in_registry() -> None:
     """'openrouter' name in provider registry."""
     from promptune.providers.openrouter import register

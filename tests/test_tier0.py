@@ -329,3 +329,21 @@ def test_code_delimiters_does_not_wrap_prose() -> None:
     )
     assert result.applied is False
     assert "```" not in result.modified_prompt
+
+
+def test_code_delimiters_keeps_block_with_blank_line() -> None:
+    """A blank line inside an indented block must not split the fence."""
+    from promptune.tier0 import rule_code_delimiters
+
+    prompt = (
+        "def foo():\n"
+        "    x = 1\n"
+        "\n"
+        "    return x\n"
+    )
+    score = score_prompt(prompt)
+    result = rule_code_delimiters(prompt, score)
+
+    assert result.applied is True
+    # Exactly one fenced block (one opening + one closing ```), not two.
+    assert result.modified_prompt.count("```") == 2

@@ -39,7 +39,10 @@ UNDO_FILE = Path("~/.local/share/promptune/undo.txt").expanduser()
 # Debounce
 # ---------------------------------------------------------------------------
 
-_enhancing = threading.Event()
+# Guards the enhancement pipeline so overlapping hotkey events (e.g. OS key
+# autorepeat while the combo is held) can't run _on_hotkey concurrently. A Lock
+# gives an atomic test-and-set; a bare Event has a check-then-set race.
+_enhancing = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Logger
@@ -154,7 +157,7 @@ def _on_hotkey(
     platform: PlatformBackend,
 ) -> None:
     """Full enhancement pipeline — triggered by the global hotkey."""
-    if _enhancing.is_set():
+    if not _enhancing.acquire(blocking=False):
         return
 
     daemon_cfg = config.get("daemon", {})
@@ -166,7 +169,6 @@ def _on_hotkey(
             return
         platform.notify.send(title, body, sound=sound and notify_sound)
 
-    _enhancing.set()
     try:
         app_before = platform.active_window.get_frontmost_app()
         original_clipboard = platform.clipboard.read()
@@ -280,7 +282,7 @@ def _on_hotkey(
         with state.lock:
             state.enhancement_count += 1
     finally:
-        _enhancing.clear()
+        _enhancing.release()
 
 
 # ---------------------------------------------------------------------------

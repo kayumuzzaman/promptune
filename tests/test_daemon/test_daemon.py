@@ -366,11 +366,19 @@ class TestOnHotkey:
         state = DaemonState()
         config = {}
 
-        _enhancing.set()
-        _on_hotkey(state, config, platform)
-        _enhancing.clear()
+        # Hold the guard: a concurrent hotkey event must skip the pipeline
+        # rather than run a second, overlapping enhancement.
+        acquired = _enhancing.acquire(blocking=False)
+        assert acquired is True
+        try:
+            _on_hotkey(state, config, platform)
+        finally:
+            _enhancing.release()
 
         platform.clipboard.copy_selection.assert_not_called()
+        # Guard is released again afterwards, so the next event can run.
+        assert _enhancing.acquire(blocking=False) is True
+        _enhancing.release()
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +388,7 @@ class TestOnHotkey:
 
 class TestDebounce:
     def test_debounce_flag(self) -> None:
-        assert _enhancing.is_set() is False
+        assert _enhancing.locked() is False
 
 
 # ---------------------------------------------------------------------------
