@@ -82,9 +82,11 @@ class CodexInstaller:
     def uninstall(self) -> None:
         """Remove promptune UserPromptSubmit hook."""
         data = _load_hooks()
-        entries = data.get("hooks", {}).get(
-            "UserPromptSubmit", []
-        )
+        hooks = data.get("hooks", {})
+        if not isinstance(hooks, dict):
+            # Non-dict hooks block: nothing of ours to remove, leave as-is.
+            return
+        entries = hooks.get("UserPromptSubmit", [])
         if not isinstance(entries, list) or not entries:
             # Leave a missing or malformed (non-list) config untouched rather
             # than rewriting it into a list of dict keys.

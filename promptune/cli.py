@@ -423,8 +423,8 @@ def config_init(config_dir: str | None) -> None:
             parents=True, exist_ok=True
         )
         if not config_path.exists():
-            config_path.write_text(
-                generate_default_config()
+            _secure_write_text(
+                config_path, generate_default_config()
             )
         click.echo(
             f"  No terminal detected. Config file "

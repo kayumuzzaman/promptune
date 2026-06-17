@@ -243,6 +243,21 @@ class TestClaudeCodeInstall:
         installer.uninstall()
         assert json.loads(settings_path.read_text()) == original
 
+    def test_uninstall_tolerates_non_dict_hooks_block(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-dict 'hooks' value must not crash uninstall."""
+        settings_path = tmp_path / "settings.json"
+        original = {"hooks": "garbage"}
+        settings_path.write_text(json.dumps(original))
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        installer.uninstall()
+        assert json.loads(settings_path.read_text()) == original
+
     def test_install_idempotent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

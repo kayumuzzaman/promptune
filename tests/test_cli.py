@@ -804,6 +804,7 @@ class TestConfigInitInteractive:
         )
         assert result.exit_code == 0
         assert config_file.exists()
+        assert oct(config_file.stat().st_mode & 0o777) == "0o600"
 
     def test_config_dir_flag_still_works(
         self, mocker, tmp_path,
