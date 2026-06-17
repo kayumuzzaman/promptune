@@ -109,7 +109,12 @@ class ClaudeCodeInstaller:
             return
 
         data = _load_settings()
-        data.setdefault("mcpServers", {})
+        servers = data.setdefault("mcpServers", {})
+        if not isinstance(servers, dict):
+            raise HookConfigError(
+                f"Refusing to modify {SETTINGS_PATH}: 'mcpServers' is "
+                f"{type(servers).__name__}, expected an object."
+            )
         data["mcpServers"]["promptune"] = {
             "command": "promptune",
             "args": ["mcp"],

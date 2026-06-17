@@ -315,6 +315,20 @@ class TestClaudeCodeMcpRegistration:
         data = json.loads(settings_path.read_text())
         assert "promptune" in data["mcpServers"]
 
+    def test_install_mcp_rejects_non_dict_mcpservers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A corrupt non-dict mcpServers block raises rather than crashing."""
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(json.dumps({"mcpServers": []}))
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        with pytest.raises(HookConfigError):
+            installer.install_mcp()
+
     def test_is_mcp_installed_returns_correct_state(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

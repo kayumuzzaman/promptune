@@ -1,4 +1,4 @@
-"""Semantic deduplication — TF-IDF cosine similarity (stdlib only)."""
+"""Semantic deduplication — term-frequency cosine similarity (stdlib only)."""
 
 from __future__ import annotations
 
