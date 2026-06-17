@@ -63,7 +63,15 @@ def run_gate(prompt: str, config: dict[str, Any]) -> int:
     if score_before.total >= threshold:
         return 0
 
-    result = enhance(prompt, config)
+    # This runs as a UserPromptSubmit hook: it must always exit 0 and never
+    # pollute stdout on failure, so the user's prompt proceeds unaltered even
+    # if enhancement raises (network error, malformed config, etc.).
+    try:
+        result = enhance(prompt, config)
+    except Exception as exc:  # noqa: BLE001 — hook must never crash
+        print(f"promptune: enhancement skipped ({exc})", file=sys.stderr)
+        return 0
+
     _emit_inject(_INJECT_PREFIX + result.enhanced)
     print(
         f"promptune: enhanced {score_before.total}"

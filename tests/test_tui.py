@@ -971,3 +971,22 @@ def test_tui_context_toggle_empty_fingerprint() -> None:
     )
     output = _render_context_toggle(fp)
     assert "no context" in output.lower()
+
+
+def test_get_user_action_eof_returns_reject(mocker: MockerFixture) -> None:
+    """EOF/closed stdin (readkey -> '') must reject, not spin forever."""
+    from promptune.tui import _get_user_action
+
+    mocker.patch("promptune.tui.readchar.readkey", return_value="")
+    assert _get_user_action() is Action.REJECT
+
+
+def test_get_user_action_keyboard_interrupt_returns_reject(
+    mocker: MockerFixture,
+) -> None:
+    from promptune.tui import _get_user_action
+
+    mocker.patch(
+        "promptune.tui.readchar.readkey", side_effect=KeyboardInterrupt
+    )
+    assert _get_user_action() is Action.REJECT

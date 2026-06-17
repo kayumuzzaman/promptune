@@ -42,7 +42,23 @@ def _is_interactive() -> bool:
     return sys.stdin.isatty()
 
 
-@click.group()
+class _PromptuneGroup(click.Group):
+    """Click group that turns a malformed-config error into a clean message.
+
+    Without this, any command that calls ``load_config`` (config show,
+    doctor, history, …) would dump a raw ConfigError traceback when the
+    user's config file is invalid.
+    """
+
+    def invoke(self, ctx: click.Context) -> object:
+        try:
+            return super().invoke(ctx)
+        except ConfigError as e:
+            click.echo(f"Error: {e}", err=True)
+            raise SystemExit(1) from e
+
+
+@click.group(cls=_PromptuneGroup)
 @click.version_option(__version__, "-V", "--version", prog_name="promptune")
 def main() -> None:
     """Promptune — terminal prompt enhancer."""

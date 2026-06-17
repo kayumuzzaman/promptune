@@ -256,3 +256,32 @@ def test_sanitize_redacts_short_pem_private_key_block() -> None:
     assert "abc" not in result
     assert "PRIVATE KEY" not in result
     assert "[REDACTED]" in result
+
+
+def test_sanitize_url_password_with_at_sign() -> None:
+    """A URL password containing '@' is fully redacted, not leaked in part."""
+    result = sanitize("mysql://user:p@ss@host/db")
+    assert "p@ss" not in result
+    assert "user" not in result
+    assert result == "[REDACTED]host/db"
+
+
+def test_sanitize_url_simple_credential() -> None:
+    """Standard scheme://user:pass@host credentials are redacted."""
+    result = sanitize("amqp://guest:guest@localhost:5672/vhost")
+    assert "guest:guest" not in result
+    assert result == "[REDACTED]localhost:5672/vhost"
+
+
+def test_sanitize_url_without_credentials_preserved() -> None:
+    """A plain URL with no userinfo is left untouched."""
+    text = "see https://example.com/path here"
+    assert sanitize(text) == text
+
+
+def test_sanitize_jwt() -> None:
+    """JSON Web Tokens are redacted even when the header is low-entropy."""
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.abc-_123XYZ"
+    result = sanitize(f"token {jwt} done")
+    assert jwt not in result
+    assert "eyJ" not in result

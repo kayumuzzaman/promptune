@@ -1981,3 +1981,19 @@ def test_get_history_store_enabled(mocker):
     )
     result = _get_history_store()
     assert result is mock_store
+
+
+def test_malformed_config_shows_clean_error_not_traceback(tmp_path) -> None:
+    """Commands that load config report a clean error on a malformed file."""
+    bad = tmp_path / "config.toml"
+    bad.write_text("this is = [[[ not valid toml")
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["config", "show", "--config-path", str(bad)]
+    )
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    # A clean SystemExit, not an unhandled ConfigError traceback.
+    assert result.exception is None or isinstance(
+        result.exception, SystemExit
+    )

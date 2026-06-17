@@ -468,3 +468,20 @@ def test_generate_default_config_round_trips() -> None:
 
     parsed = tomllib.loads(generate_default_config())
     assert parsed == DEFAULT_CONFIG
+
+
+def test_format_toml_value_escapes_special_chars() -> None:
+    """String values with quotes/backslashes/newlines are escaped and parse."""
+    import tomllib
+
+    from promptune.config import _format_toml_value
+
+    value = 'a"b\\c\nd'
+    rendered = f"k = {_format_toml_value(value)}"
+    assert tomllib.loads(rendered)["k"] == value
+
+
+def test_escape_toml_string_handles_controls() -> None:
+    from promptune.config import escape_toml_string
+
+    assert escape_toml_string('he said "hi"\\') == 'he said \\"hi\\"\\\\'

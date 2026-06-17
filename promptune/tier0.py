@@ -381,13 +381,18 @@ def rule_politeness_removal(
             modified = new_text
             replaced = True
 
-    # Clean up whitespace and orphaned punctuation left by removals
-    modified = re.sub(r'\s+', ' ', modified).strip()
-    modified = re.sub(r'\s+([,;.!?])', r'\1', modified)
-    modified = re.sub(r'([,;])(?:\s*[,;])+', r'\1', modified)
-    modified = re.sub(r'[,;]+(\s*[.!?])', r'\1', modified)
-    modified = re.sub(r'^[\s,;.!?]+', '', modified)
-    modified = re.sub(r'[,;]\s*$', '', modified)
+    # Clean up whitespace and orphaned punctuation left by removals.
+    # Collapse only *internal* horizontal runs (those following a non-space
+    # char), so multi-line structure AND line-leading indentation (code
+    # blocks, lists, blank-line-separated sections) survive a removal.
+    modified = re.sub(r'(?<=\S)[ \t]+', ' ', modified)
+    modified = re.sub(r'[ \t]+\n', '\n', modified)
+    modified = re.sub(r'\n{3,}', '\n\n', modified)
+    modified = re.sub(r'[ \t]+([,;.!?])', r'\1', modified)
+    modified = re.sub(r'([,;])(?:[ \t]*[,;])+', r'\1', modified)
+    modified = re.sub(r'[,;]+([ \t]*[.!?])', r'\1', modified)
+    modified = re.sub(r'^[ \t,;.!?]+', '', modified)
+    modified = re.sub(r'[,;][ \t]*$', '', modified)
     modified = modified.strip()
 
     return RuleResult(
