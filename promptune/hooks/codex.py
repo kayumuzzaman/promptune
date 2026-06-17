@@ -56,8 +56,19 @@ class CodexInstaller:
             return
 
         data = _load_hooks()
-        data.setdefault("hooks", {})
-        data["hooks"].setdefault("UserPromptSubmit", [])
+        hooks = data.setdefault("hooks", {})
+        if not isinstance(hooks, dict):
+            raise HookConfigError(
+                f"Refusing to modify {HOOKS_PATH}: 'hooks' is "
+                f"{type(hooks).__name__}, expected an object."
+            )
+        entries = hooks.setdefault("UserPromptSubmit", [])
+        if not isinstance(entries, list):
+            raise HookConfigError(
+                f"Refusing to modify {HOOKS_PATH}: "
+                f"'hooks.UserPromptSubmit' is {type(entries).__name__}, "
+                "expected a list."
+            )
 
         hook_entry = {
             "matcher": "",
@@ -65,15 +76,17 @@ class CodexInstaller:
                 {"type": "command", "command": HOOK_COMMAND}
             ],
         }
-        data["hooks"]["UserPromptSubmit"].append(hook_entry)
+        entries.append(hook_entry)
         _save_hooks(data)
 
     def uninstall(self) -> None:
         """Remove promptune UserPromptSubmit hook."""
         data = _load_hooks()
-        entries = data.get("hooks", {}).get(
-            "UserPromptSubmit", []
-        )
+        hooks = data.get("hooks", {})
+        if not isinstance(hooks, dict):
+            # Non-dict hooks block: nothing of ours to remove, leave as-is.
+            return
+        entries = hooks.get("UserPromptSubmit", [])
         if not isinstance(entries, list) or not entries:
             # Leave a missing or malformed (non-list) config untouched rather
             # than rewriting it into a list of dict keys.
@@ -102,9 +115,10 @@ class CodexInstaller:
             data = _load_hooks()
         except HookConfigError:
             return False
-        entries = data.get("hooks", {}).get(
-            "UserPromptSubmit", []
-        )
+        hooks = data.get("hooks", {})
+        if not isinstance(hooks, dict):
+            return False
+        entries = hooks.get("UserPromptSubmit", [])
         return any(
             HOOK_COMMAND in h.get("command", "")
             for entry in entries

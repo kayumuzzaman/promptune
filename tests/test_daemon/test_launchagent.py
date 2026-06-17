@@ -70,6 +70,18 @@ class TestGeneratePlist:
         assert "ProcessType" in plist
         assert "Background" in plist
 
+    def test_xml_special_chars_in_path_are_escaped(self):
+        la = _import_module()
+        from pathlib import Path
+
+        with patch.object(la, "LOG_FILE", Path("/tmp/a&b<c>/log.txt")):
+            plist = la.generate_plist()
+            # Must remain valid XML and escape the special characters.
+            root = ET.fromstring(plist)
+            assert root.tag == "plist"
+            assert "a&amp;b" in plist
+            assert "a&b<c>" not in plist
+
 
 # ---------------------------------------------------------------------------
 # TestInstallUninstall

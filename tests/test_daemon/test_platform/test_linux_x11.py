@@ -256,6 +256,7 @@ class TestX11Hotkey:
         d.pending_events.side_effect = [1, 0]
         key_event = MagicMock()
         key_event.type = _KEY_PRESS
+        key_event.detail = 38  # matches the grabbed keycode
         d.next_event.return_value = key_event
 
         def _stop_after_first_sleep(_secs: float) -> None:
@@ -298,6 +299,26 @@ class TestX11Hotkey:
 
         cb.assert_not_called()
         d.close.assert_called_once()
+
+    def test_listen_ignores_keypress_with_other_keycode(self) -> None:
+        """A KeyPress for a different key must not fire the callback."""
+        hk = X11Hotkey()
+        cb = MagicMock()
+        hk.register("ctrl+shift+e", cb)
+        d = _make_display()
+
+        d.pending_events.side_effect = [1, 0]
+        other = MagicMock()
+        other.type = _KEY_PRESS
+        other.detail = 99  # not the grabbed keycode (38)
+        d.next_event.return_value = other
+
+        with _fake_xlib(d), patch(
+            "time.sleep", side_effect=lambda _s: hk.stop()
+        ):
+            hk.listen()
+
+        cb.assert_not_called()
 
     def test_listen_already_stopped_skips_loop_but_cleans_up(self) -> None:
         hk = X11Hotkey()

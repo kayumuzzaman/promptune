@@ -231,3 +231,11 @@ class TestInjectVariables:
         body = "{{stack}} and {{stack}}"
         result = inject_variables(body, variables={"stack": "python"})
         assert result == "python and python"
+
+    def test_injected_value_is_not_re_expanded(self) -> None:
+        """A value that looks like a placeholder is not re-expanded."""
+        body = "{{a}} {{b}}"
+        result = inject_variables(
+            body, variables={"a": "{{b}}", "b": "X"}
+        )
+        assert result == "{{b}} X"

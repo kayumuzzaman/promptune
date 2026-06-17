@@ -213,6 +213,10 @@ def rule_negation_rewrite(
         (r"don'?t ignore\b", "pay attention to"),
         (r"never use\b", "avoid"),
         (r"do not use\b", "avoid using"),
+        # Spelled-out forms must be handled before the generic "do not"
+        # catch-all, otherwise they degrade to "avoid forget"/"avoid ignore".
+        (r"do not forget\b", "remember to"),
+        (r"do not ignore\b", "pay attention to"),
         (r"do not\b", "avoid"),
     ]
 

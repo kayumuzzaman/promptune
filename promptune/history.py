@@ -86,7 +86,9 @@ class HistoryStore:
     """SQLite-backed enhancement history."""
 
     def __init__(
-        self, db_path: Path | None = None
+        self,
+        db_path: Path | None = None,
+        max_entries: int = _MAX_ENTRIES,
     ) -> None:
         if db_path is None:
             db_path = (
@@ -99,6 +101,7 @@ class HistoryStore:
 
         db_path = Path(db_path).expanduser()
         self.db_path = db_path
+        self._max_entries = max_entries
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.RLock()
@@ -290,7 +293,7 @@ class HistoryStore:
         count = self._conn.execute(
             "SELECT COUNT(*) FROM enhancements"
         ).fetchone()[0]
-        if count > _MAX_ENTRIES:
+        if count > self._max_entries:
             self._conn.execute(
                 """DELETE FROM enhancements
                    WHERE id NOT IN (
@@ -298,7 +301,7 @@ class HistoryStore:
                        ORDER BY created_at DESC, id DESC
                        LIMIT ?
                    )""",
-                (_MAX_ENTRIES,),
+                (self._max_entries,),
             )
             self._conn.commit()
 

@@ -145,6 +145,29 @@ class TestEditPatterns:
         assert len(patterns) >= 1
         assert any(p.pattern_type == "removes_format" for p in patterns)
 
+    def test_role_removal_detected_when_role_only_in_some_edits(
+        self, store: HistoryStore
+    ) -> None:
+        """Removal rate is over edits that HAD a role, not all edits."""
+        # 4 edits that contained a role — user removed it every time.
+        for _ in range(4):
+            store.record(_make_entry(
+                decision="edit",
+                enhanced="You are an expert developer. Fix the auth bug",
+                edit_result="Fix the auth bug",
+            ))
+        # 6 unrelated edits with no role — must not dilute the role rate.
+        for _ in range(6):
+            store.record(_make_entry(
+                decision="edit",
+                enhanced="Fix the parser bug",
+                edit_result="Fix the parser bug now",
+            ))
+
+        patterns = analyse_edit_patterns(store, min_samples=5)
+
+        assert any(p.pattern_type == "removes_role" for p in patterns)
+
     def test_insufficient_edit_samples(self, store: HistoryStore) -> None:
         store.record(_make_entry(
             decision="edit",

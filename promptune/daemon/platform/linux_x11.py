@@ -159,7 +159,11 @@ class X11Hotkey(HotkeyBackend):
             while not self._stop_event.is_set():
                 if d.pending_events() > 0:
                     event = d.next_event()
-                    if event.type == X.KeyPress and self._callback:
+                    if (
+                        event.type == X.KeyPress
+                        and event.detail == keycode
+                        and self._callback
+                    ):
                         self._callback()
                 else:
                     time.sleep(0.05)

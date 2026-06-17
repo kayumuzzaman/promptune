@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import (
     TimeoutError as FuturesTimeout,
@@ -82,9 +83,18 @@ def collect_context(
         "env": (collect_environment, _default_env),
     }
 
-    results: dict = {}
+    # Pre-populate with defaults so any collector that never produces a value
+    # (timeout, exception, or a failed submit) still has an entry.
+    results: dict = {
+        name: default_fn() for name, (_, default_fn) in collectors.items()
+    }
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    # Single shared deadline so the whole call is bounded by timeout_s (not
+    # N * timeout_s), and shutdown(wait=False) so a hung collector cannot
+    # block the call past the budget via the executor's exit.
+    deadline = time.monotonic() + timeout_s
+    executor = ThreadPoolExecutor(max_workers=4)
+    try:
         futures: dict[str, Future[Any]] = {
             name: executor.submit(fn)
             for name, (fn, _) in collectors.items()
@@ -92,12 +102,13 @@ def collect_context(
 
         for name, future in futures.items():
             _, default_fn = collectors[name]
+            remaining = max(0.0, deadline - time.monotonic())
             try:
-                results[name] = future.result(
-                    timeout=timeout_s
-                )
+                results[name] = future.result(timeout=remaining)
             except (FuturesTimeout, Exception):
                 results[name] = default_fn()
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     return ContextFingerprint(
         git=results["git"],

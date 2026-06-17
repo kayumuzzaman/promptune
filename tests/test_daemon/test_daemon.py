@@ -139,6 +139,43 @@ class TestOnHotkey:
             platform.notify.send.assert_called_once()
             assert state.enhancement_count == 1
 
+    def test_restores_original_clipboard_after_paste(
+        self, tmp_path: Path
+    ) -> None:
+        """A successful paste must restore the user's prior clipboard."""
+        platform = self._make_platform()
+        state = DaemonState()
+        config = {
+            "enhancement": {"max_tier": 0},
+            "provider": {"default": "claude", "format_style": "auto"},
+            "local_llm": {"enabled": False},
+            "api_keys": {},
+            "context": {},
+            "history": {"enabled": False},
+            "daemon": {"clipboard_settle_ms": 0},
+        }
+        undo_file = tmp_path / "undo.txt"
+
+        with (
+            patch("promptune.daemon.daemon.enhance") as mock_enhance,
+            patch("promptune.daemon.daemon.UNDO_FILE", undo_file),
+        ):
+            mock_result = MagicMock()
+            mock_result.enhanced = "enhanced text"
+            mock_result.score_before.total = 40
+            mock_result.score_after.total = 75
+            mock_enhance.return_value = mock_result
+
+            _on_hotkey(state, config, platform)
+
+            platform.clipboard.paste_result.assert_called_once_with(
+                "enhanced text"
+            )
+            # Original clipboard restored after the paste, not clobbered.
+            platform.clipboard.write.assert_called_once_with(
+                "original clipboard"
+            )
+
     def test_no_selection_notifies(self) -> None:
         platform = self._make_platform()
         platform.clipboard.copy_selection.return_value = None

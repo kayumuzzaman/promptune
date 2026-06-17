@@ -864,3 +864,14 @@ class TestWriteConfigEdgeCases:
         content = config_path.read_text()
         assert "true" in content
         assert "false" in content
+
+    def test_write_config_sets_owner_only_permissions(
+        self, tmp_path: Path
+    ) -> None:
+        """Config holds plaintext API keys — must be 0o600, not world-readable."""
+        config_path = tmp_path / "config.toml"
+        write_config(
+            config_path, {"api_keys": {"claude": "sk-ant-secretkey"}}
+        )
+        assert "sk-ant-secretkey" in config_path.read_text()
+        assert oct(config_path.stat().st_mode & 0o777) == "0o600"

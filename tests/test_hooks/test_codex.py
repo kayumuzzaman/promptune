@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from promptune.hooks import detect_tools, get_installers
+from promptune.hooks import (
+    HookConfigError,
+    detect_tools,
+    get_installers,
+)
 from promptune.hooks.codex import (
     HOOK_COMMAND,
     CodexInstaller,
@@ -152,12 +156,62 @@ class TestCodexInstall:
         installer = CodexInstaller()
         assert installer.is_installed() is False
 
+    def test_install_with_str_hooks_raises_config_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hooks_path = tmp_path / "hooks.json"
+        hooks_path.write_text(
+            json.dumps({"theme": "dark", "hooks": "nope"})
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.codex.HOOKS_PATH", hooks_path
+        )
+        installer = CodexInstaller()
+        with pytest.raises(HookConfigError):
+            installer.install()
+        data = json.loads(hooks_path.read_text())
+        assert data["theme"] == "dark"
+        assert data["hooks"] == "nope"
+
+    def test_install_with_str_userpromptsubmit_raises_config_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hooks_path = tmp_path / "hooks.json"
+        hooks_path.write_text(
+            json.dumps(
+                {"theme": "dark", "hooks": {"UserPromptSubmit": "existing"}}
+            )
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.codex.HOOKS_PATH", hooks_path
+        )
+        installer = CodexInstaller()
+        with pytest.raises(HookConfigError):
+            installer.install()
+        data = json.loads(hooks_path.read_text())
+        assert data["theme"] == "dark"
+
     def test_uninstall_leaves_malformed_dict_config_untouched(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A dict-shaped UserPromptSubmit must not be rewritten into a list."""
         hooks_path = tmp_path / "hooks.json"
         original = {"hooks": {"UserPromptSubmit": {"matcher": "", "hooks": []}}}
+        hooks_path.write_text(json.dumps(original))
+        monkeypatch.setattr(
+            "promptune.hooks.codex.HOOKS_PATH",
+            hooks_path,
+        )
+        installer = CodexInstaller()
+        installer.uninstall()
+        assert json.loads(hooks_path.read_text()) == original
+
+    def test_uninstall_tolerates_non_dict_hooks_block(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-dict 'hooks' value must not crash uninstall."""
+        hooks_path = tmp_path / "hooks.json"
+        original = {"hooks": "garbage"}
         hooks_path.write_text(json.dumps(original))
         monkeypatch.setattr(
             "promptune.hooks.codex.HOOKS_PATH",

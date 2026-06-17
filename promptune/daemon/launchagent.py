@@ -9,6 +9,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -34,8 +35,10 @@ def generate_plist() -> str:
     - Redirect stdout/stderr to LOG_FILE
     - Classify the process as Background
     """
-    log = str(LOG_FILE)
-    executable = sys.executable
+    # XML-escape interpolated paths so a path containing &, <, or > can't
+    # produce a malformed plist that launchctl refuses to load.
+    log = escape(str(LOG_FILE))
+    executable = escape(sys.executable)
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

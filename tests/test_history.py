@@ -54,6 +54,20 @@ def test_store_creates_db(tmp_path) -> None:
         assert db_path.exists()
 
 
+def test_configured_max_entries_is_honored(tmp_path) -> None:
+    """A configured max_entries caps the DB via auto-prune."""
+    store = HistoryStore(db_path=tmp_path / "h.db", max_entries=3)
+    try:
+        for i in range(7):
+            store.record(_make_entry(original=f"prompt {i}"))
+        count = store._conn.execute(
+            "SELECT COUNT(*) FROM enhancements"
+        ).fetchone()[0]
+        assert count <= 3
+    finally:
+        store.close()
+
+
 def test_store_schema_version(
     store: HistoryStore,
 ) -> None:

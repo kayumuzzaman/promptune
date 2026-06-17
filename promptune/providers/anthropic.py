@@ -51,7 +51,7 @@ class ClaudeProvider(BaseProvider):
             raise ProviderError("Empty response from Claude API")
 
         block = response.content[0]
-        if not isinstance(block, TextBlock):
+        if not isinstance(block, TextBlock) or not block.text.strip():
             raise ProviderError("Empty response from Claude API")
         return block.text
 

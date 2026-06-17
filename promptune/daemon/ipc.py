@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import socket
 import threading
 from dataclasses import dataclass, field
@@ -86,12 +87,23 @@ def start_ipc_server(state: DaemonState) -> threading.Thread:
         SOCKET_PATH.unlink()
 
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # mkdir(mode=...) is a no-op when the dir already exists, so reapply
+    # owner-only perms in case it predates this with looser permissions.
+    with contextlib.suppress(OSError):
+        SOCKET_PATH.parent.chmod(0o700)
 
     server_sock = socket.socket(
         socket.AF_UNIX, socket.SOCK_STREAM
     )
     try:
-        server_sock.bind(str(SOCKET_PATH))
+        # Restrict the socket node to owner-only from creation: set umask
+        # before bind() so there's no window between bind() and chmod() where
+        # another local user could connect.
+        old_umask = os.umask(0o077)
+        try:
+            server_sock.bind(str(SOCKET_PATH))
+        finally:
+            os.umask(old_umask)
         SOCKET_PATH.chmod(0o700)
         server_sock.listen(5)
         server_sock.settimeout(1.0)

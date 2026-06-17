@@ -105,34 +105,42 @@ def analyse_edit_patterns(
 
     removes_role = 0
     removes_format = 0
+    has_role = 0
+    has_format = 0
 
     for entry in edits:
         enhanced = entry.enhanced
         edited = entry.edit_result or ""
 
-        if _ROLE_PREFIXES.search(enhanced) and not _ROLE_PREFIXES.search(edited):
-            removes_role += 1
+        if _ROLE_PREFIXES.search(enhanced):
+            has_role += 1
+            if not _ROLE_PREFIXES.search(edited):
+                removes_role += 1
 
-        if _FORMAT_SUFFIXES.search(enhanced) and not _FORMAT_SUFFIXES.search(edited):
-            removes_format += 1
+        if _FORMAT_SUFFIXES.search(enhanced):
+            has_format += 1
+            if not _FORMAT_SUFFIXES.search(edited):
+                removes_format += 1
 
-    total = len(edits)
     patterns: list[EditPattern] = []
 
-    if removes_role / total > 0.6:
+    # Rate is computed over edits that actually contained the pattern, so a
+    # strong signal (e.g. role removed in all role-bearing edits) isn't
+    # diluted by unrelated edits that never had a role to begin with.
+    if has_role > 0 and removes_role / has_role > 0.6:
         patterns.append(EditPattern(
             pattern_type="removes_role",
             description="User consistently removes role assignment",
-            frequency=removes_role / total,
-            sample_count=total,
+            frequency=removes_role / has_role,
+            sample_count=has_role,
         ))
 
-    if removes_format / total > 0.6:
+    if has_format > 0 and removes_format / has_format > 0.6:
         patterns.append(EditPattern(
             pattern_type="removes_format",
             description="User consistently removes output format instructions",
-            frequency=removes_format / total,
-            sample_count=total,
+            frequency=removes_format / has_format,
+            sample_count=has_format,
         ))
 
     return patterns
