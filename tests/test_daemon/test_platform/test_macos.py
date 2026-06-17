@@ -110,8 +110,19 @@ class TestMacOSClipboard:
         ) as mock_paste:
             cb.paste_result("enhanced")
             mock_paste.assert_called_once_with(
-                "enhanced"
+                "enhanced", settle_ms=100
             )
+
+    def test_settle_ms_is_forwarded(self) -> None:
+        """A configured settle_ms reaches the underlying clipboard calls."""
+        cb = MacOSClipboard(settle_ms=250)
+        with patch(f"{_CL}.copy_selection") as mock_copy, patch(
+            f"{_CL}.paste_result"
+        ) as mock_paste:
+            cb.copy_selection()
+            cb.paste_result("x")
+            mock_copy.assert_called_once_with(settle_ms=250)
+            mock_paste.assert_called_once_with("x", settle_ms=250)
 
 
 class TestMacOSNotify:

@@ -77,7 +77,7 @@ def get_platform(settle_ms: int = 100) -> PlatformBackend:
 
         return PlatformBackend(
             hotkey=MacOSHotkey(),
-            clipboard=MacOSClipboard(),
+            clipboard=MacOSClipboard(settle_ms=settle_ms),
             notify=MacOSNotify(),
             service=MacOSService(),
             active_window=MacOSActiveWindow(),

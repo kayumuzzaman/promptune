@@ -322,7 +322,9 @@ def _score_structure(prompt: str) -> DimensionScore:
         markers += code_blocks
         signals.append("code blocks")
 
-    xml_tags = len(re.findall(r'<\w+>', prompt))
+    # Require the '<' to not follow a word char, so generics/comparisons
+    # ("vector<int>", "Map<K>", "a<b>") aren't mistaken for structural tags.
+    xml_tags = len(re.findall(r'(?<!\w)<\w+>', prompt))
     if xml_tags > 0:
         markers += xml_tags
         signals.append(f"{xml_tags} XML tags")

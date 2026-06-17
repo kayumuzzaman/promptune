@@ -203,3 +203,34 @@ class TestDedupCheck:
         )
 
         assert result is None
+
+
+class TestDedupTieBreak:
+    def test_edit_result_preferred_over_accept_on_tie(
+        self, store: HistoryStore
+    ) -> None:
+        """On equal similarity, a user-edited result wins over a plain accept."""
+        # Record edit first, then accept — accept is newer so it is iterated
+        # first by recent(); without the tie-break it would win.
+        store.record(_make_entry(
+            original="fix the auth bug",
+            enhanced="generic enhanced version",
+            decision="edit",
+            edit_result="user-edited authentication fix",
+        ))
+        store.record(_make_entry(
+            original="fix the auth bug",
+            enhanced="generic enhanced version",
+            decision="accept",
+        ))
+
+        result = dedup_check(
+            prompt="fix the auth bug",
+            project_root="/home/user/project",
+            store=store,
+            threshold=0.85,
+            window=50,
+        )
+
+        assert result is not None
+        assert result.enhanced == "user-edited authentication fix"

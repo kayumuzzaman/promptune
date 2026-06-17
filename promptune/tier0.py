@@ -271,15 +271,19 @@ def rule_code_delimiters(
             modified_prompt=prompt, applied=False, description=""
         )
 
+    # Patterns are tightened to avoid matching ordinary prose: "class action",
+    # "the function of X", "return the report", "import meaning from this" must
+    # NOT be treated as code. Definitions require a delimiter; statements must
+    # be line-leading (optionally indented), as real code is.
     code_patterns = [
         r'\bdef\s+\w+\s*\(',
-        r'\bclass\s+\w+',
-        r'\bfunction\s+\w+',
+        r'\bclass\s+\w+\s*[(:]',
+        r'\bfunction\s+\w+\s*\(',
         r'\bconst\s+\w+\s*=',
         r'\blet\s+\w+\s*=',
         r'\bvar\s+\w+\s*=',
-        r'\breturn\s+\w+',
-        r'import\s+\w+',
+        r'(?:^|\n)\s*return\s+\w',
+        r'(?:^|\n)\s*(?:import|from)\s+\w',
     ]
 
     has_code = any(re.search(p, prompt) for p in code_patterns)
