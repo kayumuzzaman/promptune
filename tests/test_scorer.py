@@ -267,3 +267,18 @@ def test_intent_weight_adjustment_affects_scores() -> None:
     result = score_prompt("implement the REST API endpoint")
     assert result.intent == "coding"
     assert 0 <= result.total <= 100
+
+
+def test_structure_score_ignores_generics_as_xml() -> None:
+    """Generics/comparisons must not be counted as structural XML tags."""
+    from promptune.scorer import _score_structure
+
+    dim = _score_structure("implement vector<int> and Map<K> please")
+    assert not any("XML" in s for s in dim.signals)
+
+
+def test_structure_score_counts_real_xml_tags() -> None:
+    from promptune.scorer import _score_structure
+
+    dim = _score_structure("use <task> and <context> sections")
+    assert any("XML tag" in s for s in dim.signals)

@@ -314,3 +314,18 @@ def test_politeness_removal_preserves_newlines_and_structure() -> None:
     assert "```" in result.modified_prompt
     assert "    return 1" in result.modified_prompt
     assert "please" not in result.modified_prompt.lower()
+
+
+def test_code_delimiters_does_not_wrap_prose() -> None:
+    """Prose using 'return'/'import'/'class' mid-sentence is not fenced."""
+    from promptune.tier0 import rule_code_delimiters
+
+    score = score_prompt(
+        "please return the report and import the lessons from the class"
+    )
+    result = rule_code_delimiters(
+        "please return the report and import the lessons from the class",
+        score,
+    )
+    assert result.applied is False
+    assert "```" not in result.modified_prompt

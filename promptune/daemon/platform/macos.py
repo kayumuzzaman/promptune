@@ -49,6 +49,9 @@ class MacOSHotkey(HotkeyBackend):
 class MacOSClipboard(ClipboardBackend):
     """macOS clipboard via pbcopy/pbpaste and CGEvent key simulation."""
 
+    def __init__(self, settle_ms: int = 100) -> None:
+        self._settle_ms = settle_ms
+
     def read(self) -> str | None:
         return clip_mod.save_clipboard()
 
@@ -56,10 +59,10 @@ class MacOSClipboard(ClipboardBackend):
         clip_mod.write_clipboard(text)
 
     def copy_selection(self) -> str | None:
-        return clip_mod.copy_selection()
+        return clip_mod.copy_selection(settle_ms=self._settle_ms)
 
     def paste_result(self, text: str) -> bool:
-        return clip_mod.paste_result(text)
+        return clip_mod.paste_result(text, settle_ms=self._settle_ms)
 
 
 class MacOSNotify(NotifyBackend):

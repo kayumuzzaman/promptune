@@ -16,7 +16,33 @@ SOCKET_PATH = Path(
 ).expanduser()
 
 _BUFFER_SIZE = 4096
+_MAX_MESSAGE_SIZE = 65536
 _log = logging.getLogger(__name__)
+
+
+def _recv_message(conn: socket.socket) -> bytes:
+    """Read one JSON message, spanning multiple buffers if needed.
+
+    A single 4 KiB ``recv`` truncates a long ``report_cwd`` (deep cwd +
+    project_root) into invalid JSON. Accumulate chunks until the buffer
+    parses as JSON, the peer stops sending, or a safety cap is hit.
+    """
+    conn.settimeout(1.0)
+    chunks = bytearray()
+    while len(chunks) < _MAX_MESSAGE_SIZE:
+        try:
+            chunk = conn.recv(_BUFFER_SIZE)
+        except socket.timeout:
+            break
+        if not chunk:
+            break
+        chunks.extend(chunk)
+        try:
+            json.loads(chunks.decode())
+            break
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+    return bytes(chunks)
 
 
 @dataclass
@@ -122,7 +148,7 @@ def start_ipc_server(state: DaemonState) -> threading.Thread:
                     break
 
                 try:
-                    data = conn.recv(_BUFFER_SIZE)
+                    data = _recv_message(conn)
                     if data:
                         _handle_message(data, state, conn)
                 except OSError as exc:

@@ -136,7 +136,7 @@ def _read_clipboard_raising() -> str:
     return result.stdout
 
 
-def copy_selection() -> str | None:
+def copy_selection(settle_ms: int = CLIPBOARD_SETTLE_MS) -> str | None:
     """Trigger a copy of the current selection and return the clipboard text.
 
     Clears the clipboard first so an empty selection (Cmd+C with nothing
@@ -144,6 +144,9 @@ def copy_selection() -> str | None:
     that prior value before returning. Raises when pbcopy/pbpaste itself is
     missing or fails, so callers can distinguish a broken tool from a
     genuinely empty selection.
+
+    *settle_ms* is how long to wait after the copy keystroke before reading
+    the clipboard back (configurable for slow apps via ``clipboard_settle_ms``).
     """
     previous = save_clipboard()
     # Only clear what we can put back: skip the clear when the prior read
@@ -154,7 +157,7 @@ def copy_selection() -> str | None:
         write_clipboard("")
     try:
         simulate_cmd_c()
-        time.sleep(CLIPBOARD_SETTLE_MS / 1000.0)
+        time.sleep(settle_ms / 1000.0)
         text = _read_clipboard_raising()
     except Exception:
         # A failed copy/read after the clear must not leave the user's
@@ -169,14 +172,14 @@ def copy_selection() -> str | None:
     return None
 
 
-def paste_result(text: str) -> bool:
+def paste_result(text: str, settle_ms: int = CLIPBOARD_SETTLE_MS) -> bool:
     """Write *text* to the clipboard and then trigger a paste.
 
-    Writes the text, waits for the clipboard to settle, then simulates Cmd+V.
-    Returns ``True`` once the paste keystroke has been dispatched.
+    Writes the text, waits *settle_ms* for the clipboard to settle, then
+    simulates Cmd+V. Returns ``True`` once the keystroke has been dispatched.
     """
     write_clipboard(text)
-    time.sleep(CLIPBOARD_SETTLE_MS / 1000.0)
+    time.sleep(settle_ms / 1000.0)
     simulate_cmd_v()
     return True
 

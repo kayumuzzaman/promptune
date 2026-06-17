@@ -79,19 +79,23 @@ def dedup_check(
     best_score = 0.0
     best_enhanced: str | None = None
     best_original: str | None = None
+    best_is_edit = False
 
     for entry in entries:
         if entry.decision == "reject":
             continue
 
         sim = cosine_similarity(prompt, entry.original)
-        if sim > best_score:
+        is_edit = entry.decision == "edit" and bool(entry.edit_result)
+        # On an exact-similarity tie, prefer a user-edited result over a plain
+        # accept — the edit reflects what the user actually wanted.
+        if sim > best_score or (
+            sim == best_score and is_edit and not best_is_edit
+        ):
             best_score = sim
             best_original = entry.original
-            if entry.decision == "edit" and entry.edit_result:
-                best_enhanced = entry.edit_result
-            else:
-                best_enhanced = entry.enhanced
+            best_enhanced = entry.edit_result if is_edit else entry.enhanced
+            best_is_edit = is_edit
 
     if best_score >= threshold and best_enhanced:
         return DedupHit(

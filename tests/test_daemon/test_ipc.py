@@ -373,3 +373,21 @@ class TestIPCServer:
             with contextlib.suppress(_socket.timeout):
                 client.recv(4096)
             client.close()
+
+
+def test_recv_message_accumulates_multiple_chunks() -> None:
+    """A message split across recv() buffers is reassembled, not truncated."""
+    from unittest.mock import MagicMock
+
+    from promptune.daemon.ipc import _recv_message
+
+    payload = ('{"action": "report_cwd", "cwd": "' + "x" * 5000 + '"}').encode()
+    mid = 4096
+    conn = MagicMock()
+    conn.recv.side_effect = [payload[:mid], payload[mid:], b""]
+
+    data = _recv_message(conn)
+    assert data == payload
+    import json
+
+    assert json.loads(data.decode())["action"] == "report_cwd"
