@@ -12,6 +12,7 @@ from promptune.engine import get_registry
 from promptune.providers import ProviderRegistry
 from promptune.setup import (
     KEY_PREFIXES,
+    _clamp_choice,
     _prompt_api_key,
     _prompt_auto_enhance_settings,
     _prompt_local_llm_settings,
@@ -164,6 +165,32 @@ class TestPromptProvider:
             _prompt_provider(mock_registry, default="claude")
         prompt_text = mock_prompt.call_args[0][0]
         assert "claude" in prompt_text or "openai" in prompt_text
+
+    def test_invalid_stored_default_is_clamped(
+        self, mock_registry: ProviderRegistry
+    ) -> None:
+        """A bogus provider from config must not be passed to click.Choice as
+        the default (which would re-prompt forever on blank Enter)."""
+        with patch("click.prompt", return_value="claude") as mock_prompt:
+            _prompt_provider(mock_registry, default="not-a-real-provider")
+        passed_default = mock_prompt.call_args.kwargs["default"]
+        assert passed_default in mock_registry.list()
+
+
+class TestClampChoice:
+    """_clamp_choice guards click.Choice defaults against invalid config."""
+
+    def test_valid_value_passes_through(self) -> None:
+        assert _clamp_choice("xml", ["auto", "xml", "plain"], "auto") == "xml"
+
+    def test_case_insensitive_match_passes_through(self) -> None:
+        assert _clamp_choice("XML", ["auto", "xml"], "auto") == "XML"
+
+    def test_invalid_value_falls_back(self) -> None:
+        assert _clamp_choice("nonsense", ["auto", "xml"], "auto") == "auto"
+
+    def test_non_string_falls_back(self) -> None:
+        assert _clamp_choice(None, ["auto", "xml"], "auto") == "auto"
 
 
 class TestPromptApiKey:

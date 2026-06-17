@@ -12,7 +12,7 @@ import math
 import re
 from dataclasses import dataclass
 
-from promptune.meta_prompt import _keyword_matches
+from promptune.meta_prompt import _INTENT_KEYWORDS, _keyword_matches
 
 
 @dataclass
@@ -36,24 +36,9 @@ class ScoreResult:
 
 # --- Intent detection (reuses meta_prompt logic) ---
 
-_INTENT_KEYWORDS: dict[str, list[str]] = {
-    "coding": [
-        "build", "create", "implement", "code", "develop", "api",
-        "function", "class", "app", "script", "debug", "fix",
-        "refactor", "deploy", "test", "endpoint", "database",
-        "server", "cli", "component", "module", "service",
-    ],
-    "writing": [
-        "write", "draft", "compose", "essay", "blog", "article",
-        "email", "letter", "story", "post", "content", "copy",
-        "documentation", "report", "proposal", "summary",
-    ],
-    "research": [
-        "explain", "describe", "what is", "how does", "why",
-        "compare", "analyze", "evaluate", "review", "understand",
-        "difference between", "overview", "summarize",
-    ],
-}
+# Intent classification reuses meta_prompt's keyword table directly so the two
+# code paths (scorer.score.intent and meta_prompt.detect_intent) can never drift
+# out of sync — a prior duplicate list silently diverged for the "coding" intent.
 
 
 def _detect_intent(prompt: str) -> str:

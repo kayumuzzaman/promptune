@@ -137,12 +137,29 @@ def _print_tier_overview() -> None:
     click.echo()
 
 
+def _clamp_choice(value: Any, choices: list[str], fallback: str) -> str:
+    """Return *value* if it's a valid (case-insensitive) choice, else *fallback*.
+
+    The wizard pre-fills click.Choice prompts with values read from the user's
+    config. click re-validates the default even on a blank Enter, so a stale or
+    hand-edited invalid value would otherwise re-prompt forever — exactly the
+    "fix my broken config" case the wizard exists to handle.
+    """
+    lowered = {c.lower() for c in choices}
+    if isinstance(value, str) and value.lower() in lowered:
+        return value
+    return fallback
+
+
 def _prompt_provider(
     registry: ProviderRegistry, default: str
 ) -> str:
     """Prompt user to select a provider from the registry."""
     providers = sorted(registry.list())
     choices = "/".join(providers)
+    default = _clamp_choice(
+        default, providers, DEFAULT_CONFIG["provider"]["default"]
+    )
 
     provider = click.prompt(
         f"  Provider [{choices}]",
@@ -256,7 +273,11 @@ def _prompt_optional_settings(
             ["minimal", "balanced", "detailed"],
             case_sensitive=False,
         ),
-        default=defaults["default_mode"],
+        default=_clamp_choice(
+            defaults["default_mode"],
+            ["minimal", "balanced", "detailed"],
+            DEFAULT_CONFIG["enhancement"]["default_mode"],
+        ),
         show_choices=False,
         show_default=False,
     )
@@ -274,7 +295,11 @@ def _prompt_optional_settings(
             ["auto", "xml", "markdown", "plain"],
             case_sensitive=False,
         ),
-        default=defaults["format_style"],
+        default=_clamp_choice(
+            defaults["format_style"],
+            ["auto", "xml", "markdown", "plain"],
+            DEFAULT_CONFIG["provider"]["format_style"],
+        ),
         show_choices=False,
         show_default=False,
     )
