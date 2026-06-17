@@ -132,7 +132,10 @@ class ClaudeCodeInstaller:
             data = _load_settings()
         except HookConfigError:
             return False
-        return "promptune" in data.get("mcpServers", {})
+        servers = data.get("mcpServers", {})
+        if not isinstance(servers, dict):
+            return False
+        return "promptune" in servers
 
     def is_installed(self) -> bool:
         """Return True if promptune hook is in settings.json.
