@@ -102,6 +102,14 @@ def test_sanitize_keyword_value_with_equals_does_not_leak() -> None:
     assert "[REDACTED]" in result
 
 
+def test_sanitize_keyword_value_with_pipe_does_not_leak() -> None:
+    """A keyword value containing '|' is fully redacted (no suffix leak)."""
+    text = "password=abc|def"
+    result = sanitize(text)
+    assert "def" not in result
+    assert "[REDACTED]" in result
+
+
 def test_sanitize_bare_hex_secret() -> None:
     """Redacts a long bare hex secret with no preceding keyword."""
     text = "value bd1e4d8cf4430b9c8e1f2a3d4e5f60718293a4b5"

@@ -36,7 +36,7 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
 _KEYWORD_PATTERNS: list[re.Pattern[str]] = [
     re.compile(
         r"(?P<key>password|passwd|secret|token|api_key|apikey)"
-        r"(?P<sep>\s*[=:]\s*)[^\n|]+",
+        r"(?P<sep>\s*[=:]\s*)[^\n]+",
         re.IGNORECASE,
     ),
 ]
