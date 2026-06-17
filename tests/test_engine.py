@@ -253,6 +253,25 @@ def test_engine_forced_tier2_falls_back_to_tier1(
     assert result.provider == "local"
 
 
+def test_engine_forced_tier2_both_providers_fail_falls_back_to_tier0(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Forced tier 2 with both cloud AND local failing degrades to tier 0."""
+    cloud = mocker.MagicMock()
+    cloud.enhance.side_effect = ProviderError("cloud down")
+    mocker.patch(
+        "promptune.engine._create_cloud_provider", return_value=cloud
+    )
+    local = mocker.MagicMock()
+    local.enhance.side_effect = ProviderError("local down")
+    mocker.patch(
+        "promptune.providers.local.LocalProvider", return_value=local
+    )
+
+    result = enhance("fix the bug", mock_config, tier_override=2)
+    assert result.tier_used == 0
+
+
 def test_engine_missing_api_key_forced_tier2_falls_back(
     mock_config: dict,
 ) -> None:

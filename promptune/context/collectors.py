@@ -144,12 +144,21 @@ def collect_shell_history(
         # Bounded tail read: only the last chunk of the file is loaded, so a
         # multi-GB .zsh_history is never read in full just to grab max_lines.
         tail_bytes = max(max_lines * 1024, 65536)
+        seeked = False
         with open(hist_file, "rb") as fh:
             try:
                 fh.seek(-tail_bytes, os.SEEK_END)
+                seeked = True
             except OSError:
                 fh.seek(0)
             raw = fh.read()
+        # When we seeked into the middle of the file the first line is likely
+        # partial (and may even split a multi-byte char); drop it so decoding
+        # never yields a mangled command.
+        if seeked:
+            newline = raw.find(b"\n")
+            if newline != -1:
+                raw = raw[newline + 1:]
         lines = raw.decode("utf-8", errors="replace").splitlines()[
             -max_lines:
         ]

@@ -122,6 +122,18 @@ class TestTranslateKey:
         with pytest.raises(ValueError):
             _translate_key("ctrl+abc", "zsh")
 
+    def test_punctuation_char_after_modifier_allowed(self) -> None:
+        # Legit combos like ctrl+/ or ctrl+- must still work.
+        assert _translate_key("ctrl+/", "zsh") == "'^/'"
+        assert _translate_key("ctrl+-", "zsh") == "'^-'"
+
+    def test_metacharacter_char_after_modifier_rejected(self) -> None:
+        import pytest
+
+        for bad in ("ctrl+;", "ctrl+$", "alt+`"):
+            with pytest.raises(ValueError):
+                _translate_key(bad, "zsh")
+
 
 
 class TestGenerateZshWidget:

@@ -101,9 +101,12 @@ def write_config(
         lines.append("")
 
     # Config may contain plaintext API keys — write atomically and restrict
-    # to owner-only (0o600) so it is never world/group readable.
+    # to owner-only (0o600) from creation so it is never world/group readable
+    # (no window between write and chmod).
     tmp = config_path.with_suffix(config_path.suffix + ".tmp")
-    tmp.write_text("\n".join(lines) + "\n")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(lines) + "\n")
     os.chmod(tmp, 0o600)
     os.replace(tmp, config_path)
 

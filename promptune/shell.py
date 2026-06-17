@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 import sys
 
+# Shell metacharacters that could break out of the quoted bind line and inject
+# commands when the generated widget is eval'd.
+_UNSAFE_KEY_CHARS = "'\"`;$\n\r"
+
 
 def _translate_key(canonical: str, shell: str) -> str:
     """Translate canonical key format to shell-native syntax.
@@ -16,7 +20,7 @@ def _translate_key(canonical: str, shell: str) -> str:
         # Raw shell-native key passthrough. Reject shell metacharacters so a
         # crafted --key can't break out of the generated quoted bind line and
         # inject commands when the widget is eval'd.
-        if any(c in canonical for c in "'\"`;$\n\r"):
+        if any(c in canonical for c in _UNSAFE_KEY_CHARS):
             raise ValueError(
                 f"Unsafe raw key binding {canonical!r}: contains shell "
                 "metacharacters."
@@ -33,10 +37,13 @@ def _translate_key(canonical: str, shell: str) -> str:
                 f"Unsupported hotkey modifier {modifier!r} in "
                 f"{canonical!r}. Supported modifiers: ctrl, alt."
             )
-        if len(char) != 1 or not char.isalnum():
+        # Allow a single character (incl. punctuation like '/' or '-'), but
+        # reject shell metacharacters so the char can't break out of the
+        # quoted binding.
+        if len(char) != 1 or char in _UNSAFE_KEY_CHARS:
             raise ValueError(
                 f"Invalid hotkey {part!r} in {canonical!r}: expected a "
-                "single alphanumeric character after the modifier."
+                "single non-metacharacter after the modifier."
             )
 
     if shell == "zsh":

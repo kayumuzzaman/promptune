@@ -83,7 +83,11 @@ def collect_context(
         "env": (collect_environment, _default_env),
     }
 
-    results: dict = {}
+    # Pre-populate with defaults so any collector that never produces a value
+    # (timeout, exception, or a failed submit) still has an entry.
+    results: dict = {
+        name: default_fn() for name, (_, default_fn) in collectors.items()
+    }
 
     # Single shared deadline so the whole call is bounded by timeout_s (not
     # N * timeout_s), and shutdown(wait=False) so a hung collector cannot

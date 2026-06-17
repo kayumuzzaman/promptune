@@ -338,7 +338,11 @@ def _secure_write_text(config_path: Path, text: str) -> None:
     """
     config_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = config_path.with_suffix(config_path.suffix + ".tmp")
-    tmp.write_text(text)
+    # Create the temp file 0o600 from the start (no world-readable window
+    # between write and chmod).
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
     os.chmod(tmp, 0o600)
     os.replace(tmp, config_path)
 
