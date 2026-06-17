@@ -266,3 +266,13 @@ class TestGetInstallers:
         found = detect_tools()
         names = [i.name for i in found]
         assert "Codex" not in names
+
+
+def test_is_installed_false_on_scalar_userpromptsubmit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scalar UserPromptSubmit value reports not-installed, not TypeError."""
+    hooks_path = tmp_path / "hooks.json"
+    hooks_path.write_text(json.dumps({"hooks": {"UserPromptSubmit": 5}}))
+    monkeypatch.setattr("promptune.hooks.codex.HOOKS_PATH", hooks_path)
+    assert CodexInstaller().is_installed() is False

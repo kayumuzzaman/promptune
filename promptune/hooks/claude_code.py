@@ -152,6 +152,8 @@ class ClaudeCodeInstaller:
         if not isinstance(hooks, dict):
             return False
         entries = hooks.get("UserPromptSubmit", [])
+        if not isinstance(entries, list):
+            return False
         return any(
             HOOK_COMMAND in h.get("command", "")
             for entry in entries
