@@ -135,7 +135,7 @@ def inject_variables(body: str, variables: dict[str, str]) -> str:
     """
 
     def _replace(match: re.Match[str]) -> str:
-        key = match.group(1)
+        key = match.group(1).strip()
         return variables.get(key, match.group(0))
 
     return _PLACEHOLDER_RE.sub(_replace, body)

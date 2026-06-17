@@ -239,3 +239,11 @@ class TestInjectVariables:
             body, variables={"a": "{{b}}", "b": "X"}
         )
         assert result == "{{b}} X"
+
+    def test_whitespace_inside_braces_is_tolerated(self) -> None:
+        """`{{ key }}` (Jinja/Handlebars style) resolves like `{{key}}`."""
+        body = "Stack: {{ stack }} | Branch: {{branch}}"
+        result = inject_variables(
+            body, variables={"stack": "python", "branch": "main"}
+        )
+        assert result == "Stack: python | Branch: main"

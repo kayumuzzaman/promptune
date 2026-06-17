@@ -109,7 +109,12 @@ class ClaudeCodeInstaller:
             return
 
         data = _load_settings()
-        data.setdefault("mcpServers", {})
+        servers = data.setdefault("mcpServers", {})
+        if not isinstance(servers, dict):
+            raise HookConfigError(
+                f"Refusing to modify {SETTINGS_PATH}: 'mcpServers' is "
+                f"{type(servers).__name__}, expected an object."
+            )
         data["mcpServers"]["promptune"] = {
             "command": "promptune",
             "args": ["mcp"],
@@ -127,7 +132,10 @@ class ClaudeCodeInstaller:
             data = _load_settings()
         except HookConfigError:
             return False
-        return "promptune" in data.get("mcpServers", {})
+        servers = data.get("mcpServers", {})
+        if not isinstance(servers, dict):
+            return False
+        return "promptune" in servers
 
     def is_installed(self) -> bool:
         """Return True if promptune hook is in settings.json.
