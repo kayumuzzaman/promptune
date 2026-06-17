@@ -238,6 +238,19 @@ def _on_hotkey(
                         "Promptune",
                         f"Prompt enhanced ({sign}{delta} PQS). Ctrl+Z to undo.",
                     )
+                    # Restore the user's pre-hotkey clipboard now that the
+                    # enhanced text has been pasted, so enhancement doesn't
+                    # silently clobber it. Wait one settle interval first so
+                    # the paste keystroke consumes the enhanced text before we
+                    # overwrite the clipboard. (Only text clipboards can be
+                    # restored; an image/empty clipboard reads as None.)
+                    if original_clipboard is not None:
+                        settle_s = (
+                            daemon_cfg.get("clipboard_settle_ms", 100)
+                            / 1000.0
+                        )
+                        time.sleep(settle_s)
+                        platform.clipboard.write(original_clipboard)
                 else:
                     # Write succeeded but the paste keystroke didn't inject \u2014
                     # the text is on the clipboard, so tell the user to paste.

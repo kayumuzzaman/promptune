@@ -143,3 +143,108 @@ def test_sanitize_redacts_slash_bearing_base64_secret() -> None:
     result = sanitize(f"creds={secret}")
     assert secret not in result
     assert "[REDACTED]" in result
+
+
+def test_sanitize_postgresql_connection_string() -> None:
+    """Redacts canonical 'postgresql://' scheme (not just 'postgres')."""
+    text = "DATABASE_URL=postgresql://admin:Pr0dP4ss@db:5432/app"
+    result = sanitize(text)
+    assert "Pr0dP4ss" not in result
+    assert "[REDACTED]" in result
+
+
+def test_sanitize_amqps_connection_string() -> None:
+    """Redacts AMQP(S) broker credentials."""
+    text = "BROKER=amqps://user:Secr3tBrok3r@broker.example.com"
+    result = sanitize(text)
+    assert "Secr3tBrok3r" not in result
+
+
+def test_sanitize_mssql_connection_string() -> None:
+    """Redacts MSSQL connection credentials."""
+    text = "DSN=mssql://sa:Passw0rdSql@sqlsrv:1433/db"
+    result = sanitize(text)
+    assert "Passw0rdSql" not in result
+
+
+def test_sanitize_http_basic_auth_userinfo() -> None:
+    """Redacts basic-auth userinfo passwords in http(s) URLs."""
+    text = "curl https://deploy:hunter2pass@example.com/api"
+    result = sanitize(text)
+    assert "hunter2pass" not in result
+
+
+def test_sanitize_redis_connection_string_still_works() -> None:
+    """Existing redis scheme still redacted after broadening."""
+    text = "CACHE=redis://user:r3disSecret@cache:6379/0"
+    result = sanitize(text)
+    assert "r3disSecret" not in result
+
+
+def test_sanitize_mongodb_connection_string_still_works() -> None:
+    """Existing mongodb scheme still redacted after broadening."""
+    text = "MONGO=mongodb://user:m0ngoSecret@mongo:27017/db"
+    result = sanitize(text)
+    assert "m0ngoSecret" not in result
+
+
+def test_sanitize_preserves_jira_ticketed_branch_name() -> None:
+    """A ticketed branch name is context, not a secret — must survive."""
+    text = "branch=feature/JIRA-1234-add-login-flow"
+    result = sanitize(text)
+    assert "feature/JIRA-1234-add-login-flow" in result
+    assert "[REDACTED]" not in result
+
+
+def test_sanitize_preserves_versioned_release_branch_name() -> None:
+    """A versioned release branch name must survive un-redacted."""
+    text = "branch=release/v2.3.1-hotfix-aaa"
+    result = sanitize(text)
+    assert "release/v2.3.1-hotfix-aaa" in result
+    assert "[REDACTED]" not in result
+
+
+def test_sanitize_still_redacts_aws_key_after_branch_relaxation() -> None:
+    """AWS key still redacted despite branch-name relaxation."""
+    text = "key=AKIAIOSFODNN7EXAMPLE branch=feature/JIRA-1234-x"
+    result = sanitize(text)
+    assert "AKIAIOSFODNN7EXAMPLE" not in result
+    assert "feature/JIRA-1234-x" in result
+
+
+def test_sanitize_still_redacts_jwt_after_branch_relaxation() -> None:
+    """A bare JWT header segment is still redacted."""
+    text = "tok eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoidGVzdCJ9.abc123"
+    result = sanitize(text)
+    assert "eyJhbGciOiJIUzI1NiJ9" not in result
+
+
+def test_sanitize_still_redacts_high_entropy_token_after_relaxation() -> None:
+    """A contiguous high-entropy slash-bearing secret is still redacted."""
+    secret = "AbCdEfGhIjKlMnOp/QrStUvWxYz012345/AbCdEfGhIjKl"
+    result = sanitize(f"branch=feature/JIRA-1 creds={secret}")
+    assert secret not in result
+    assert "feature/JIRA-1" in result
+
+
+def test_sanitize_redacts_pem_private_key_block() -> None:
+    """A PEM private-key block is fully redacted (markers + body)."""
+    pem = (
+        "-----BEGIN RSA PRIVATE KEY-----\n"
+        "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQD1\n"
+        "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP\n"
+        "-----END RSA PRIVATE KEY-----"
+    )
+    result = sanitize(f"key:\n{pem}")
+    assert "MIIEvgIBADANBgkqhkiG" not in result
+    assert "BEGIN RSA PRIVATE KEY" not in result
+    assert "[REDACTED]" in result
+
+
+def test_sanitize_redacts_short_pem_private_key_block() -> None:
+    """A short-bodied PEM private-key block is still redacted."""
+    pem = "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
+    result = sanitize(pem)
+    assert "abc" not in result
+    assert "PRIVATE KEY" not in result
+    assert "[REDACTED]" in result

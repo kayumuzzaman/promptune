@@ -99,6 +99,7 @@ class LinuxService(ServiceBackend):
             env_file=str(env_file),
         )
         self._service_path.write_text(content, encoding="utf-8")
+        os.chmod(self._service_path, 0o644)
 
         subprocess.run(
             ["systemctl", "--user", "daemon-reload"],

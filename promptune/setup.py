@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
 from typing import Any
 
@@ -99,7 +100,12 @@ def write_config(
             )
         lines.append("")
 
-    config_path.write_text("\n".join(lines) + "\n")
+    # Config may contain plaintext API keys — write atomically and restrict
+    # to owner-only (0o600) so it is never world/group readable.
+    tmp = config_path.with_suffix(config_path.suffix + ".tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, config_path)
 
 
 def _print_tier_overview() -> None:

@@ -124,12 +124,18 @@ def match_template(
     return candidates[0]
 
 
+_PLACEHOLDER_RE = re.compile(r"\{\{([^{}]+)\}\}")
+
+
 def inject_variables(body: str, variables: dict[str, str]) -> str:
     """Replace {{variable}} placeholders with values.
 
-    Unknown variables are left as-is.
+    Single-pass substitution: a value that itself looks like a placeholder is
+    not re-expanded. Unknown variables are left as-is.
     """
-    result = body
-    for key, value in variables.items():
-        result = result.replace(f"{{{{{key}}}}}", value)
-    return result
+
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        return variables.get(key, match.group(0))
+
+    return _PLACEHOLDER_RE.sub(_replace, body)

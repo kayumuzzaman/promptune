@@ -91,12 +91,9 @@ def _find_history_file() -> Path | None:
 
 def _get_project_root() -> Path:
     """Get project root via git or cwd."""
-    try:
-        root = _run_git(("rev-parse", "--show-toplevel"))
-        if root:
-            return Path(root)
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
+    root = _safe_git(("rev-parse", "--show-toplevel"), timeout=0.3)
+    if root:
+        return Path(root)
     return Path.cwd()
 
 
@@ -144,9 +141,18 @@ def collect_shell_history(
         )
 
     try:
-        lines = hist_file.read_text(
-            errors="replace"
-        ).splitlines()[-max_lines:]
+        # Bounded tail read: only the last chunk of the file is loaded, so a
+        # multi-GB .zsh_history is never read in full just to grab max_lines.
+        tail_bytes = max(max_lines * 1024, 65536)
+        with open(hist_file, "rb") as fh:
+            try:
+                fh.seek(-tail_bytes, os.SEEK_END)
+            except OSError:
+                fh.seek(0)
+            raw = fh.read()
+        lines = raw.decode("utf-8", errors="replace").splitlines()[
+            -max_lines:
+        ]
     except (OSError, PermissionError):
         return ShellHistoryContext(
             recent_commands=[],

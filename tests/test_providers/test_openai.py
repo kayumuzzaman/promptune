@@ -92,6 +92,15 @@ def test_openai_o_series_uses_max_completion_tokens(
     assert "max_tokens" not in kwargs
 
 
+def test_openai_gpt5_uses_max_completion_tokens(
+    mocker: MockerFixture,
+) -> None:
+    """gpt-5-class reasoning models also require max_completion_tokens."""
+    kwargs = _enhance_with_cap(mocker, "gpt-5-mini")
+    assert kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in kwargs
+
+
 def test_openai_api_error_handling(mocker: MockerFixture) -> None:
     """API error raises ProviderError."""
     mock_client = mocker.MagicMock()

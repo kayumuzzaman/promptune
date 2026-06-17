@@ -3,7 +3,6 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from promptune.config import ConfigError
 from promptune.engine import EnhanceResult, enhance, get_registry
 from promptune.providers import ProviderError
 from promptune.scorer import ScoreResult
@@ -214,10 +213,15 @@ def test_engine_missing_api_key_tier2(
     assert result.tier_used == 0
 
 
-def test_engine_provider_error_propagates_on_forced_tier(
+def test_engine_forced_tier_falls_back_on_provider_error(
     mocker: MockerFixture, mock_config: dict
 ) -> None:
-    """When tier is forced and provider fails, error propagates."""
+    """A forced tier whose provider fails degrades instead of raising.
+
+    Documented contract: graceful degradation — always falls back to the
+    tier below on failure (with a logged warning).
+    """
+    mock_config["local_llm"]["enabled"] = False
     mock_provider = mocker.MagicMock()
     mock_provider.enhance.side_effect = ProviderError("API down")
     mocker.patch(
@@ -225,20 +229,41 @@ def test_engine_provider_error_propagates_on_forced_tier(
         return_value=mock_provider,
     )
 
-    with pytest.raises(ProviderError, match="API down"):
-        enhance("prompt", mock_config, tier_override=2)
+    result = enhance("prompt", mock_config, tier_override=2)
+    assert result.tier_used == 0
 
 
-def test_engine_missing_api_key_forced_tier2(
+def test_engine_forced_tier2_falls_back_to_tier1(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Forced tier 2 failure falls back to tier 1 when local LLM is enabled."""
+    cloud = mocker.MagicMock()
+    cloud.enhance.side_effect = ProviderError("cloud down")
+    mocker.patch(
+        "promptune.engine._create_cloud_provider", return_value=cloud
+    )
+    local = mocker.MagicMock()
+    local.enhance.return_value = "local result"
+    mocker.patch(
+        "promptune.providers.local.LocalProvider", return_value=local
+    )
+
+    result = enhance("fix the bug", mock_config, tier_override=2)
+    assert result.tier_used == 1
+    assert result.provider == "local"
+
+
+def test_engine_missing_api_key_forced_tier2_falls_back(
     mock_config: dict,
 ) -> None:
-    """Forcing tier=2 with ALL API keys empty raises ConfigError."""
+    """Forcing tier=2 with all keys empty degrades gracefully (no raise)."""
     mock_config["api_keys"]["claude"] = ""
     mock_config["api_keys"]["openai"] = ""
     mock_config["api_keys"]["openrouter"] = ""
+    mock_config["local_llm"]["enabled"] = False
 
-    with pytest.raises(ConfigError, match="[Aa][Pp][Ii].*[Kk]ey"):
-        enhance("fix the bug", mock_config, tier_override=2)
+    result = enhance("fix the bug", mock_config, tier_override=2)
+    assert result.tier_used == 0
 
 
 def test_engine_dedup_hit_returns_cached(

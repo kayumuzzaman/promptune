@@ -269,6 +269,51 @@ def test_config_set_key(mocker, tmp_path) -> None:
     assert result.exit_code == 0
 
 
+def test_set_key_writes_owner_only_permissions(mocker, tmp_path) -> None:
+    """config --set-key writes a 0o600 file (contains a plaintext key)."""
+    config_file = tmp_path / "config.toml"
+    mocker.patch(
+        "promptune.cli._get_config_path", return_value=config_file
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["config", "--set-key", "claude", "sk-ant-secret"]
+    )
+    assert result.exit_code == 0
+    assert oct(config_file.stat().st_mode & 0o777) == "0o600"
+
+
+def test_reset_writes_owner_only_permissions(mocker, tmp_path) -> None:
+    """config --reset writes a 0o600 file."""
+    config_file = tmp_path / "config.toml"
+    mocker.patch(
+        "promptune.cli._get_config_path", return_value=config_file
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "--reset"], input="y\n")
+    assert result.exit_code == 0
+    assert oct(config_file.stat().st_mode & 0o777) == "0o600"
+
+
+def test_set_key_persists_into_partial_config_missing_section(
+    mocker, tmp_path
+) -> None:
+    """Setting a key whose [section] is absent must create it and persist."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[provider]\ndefault = "claude"\n')
+    mocker.patch(
+        "promptune.cli._get_config_path", return_value=config_file
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["config", "--set-key", "claude", "sk-ant-PERSISTME"]
+    )
+    assert result.exit_code == 0
+    content = config_file.read_text()
+    assert "sk-ant-PERSISTME" in content
+    assert "[api_keys]" in content
+
+
 def test_config_set_key_rejects_unknown_provider(mocker, tmp_path) -> None:
     """config --set-key validates the provider name."""
     config_file = tmp_path / "config.toml"
@@ -389,6 +434,24 @@ class TestDoctorAutoEnhance:
         result = runner.invoke(main, ["doctor"])
         assert "Claude Code" in result.output
         assert "\u2713" in result.output
+
+    def test_doctor_survives_installer_is_installed_error(
+        self, mocker
+    ) -> None:
+        """A malformed settings file must not crash 'doctor'."""
+        mock_installer = MagicMock()
+        mock_installer.name = "Claude Code"
+        mock_installer.detect.return_value = True
+        mock_installer.is_installed.side_effect = AttributeError(
+            "'str' object has no attribute 'get'"
+        )
+        mocker.patch(
+            "promptune.cli.get_installers",
+            return_value=[mock_installer],
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["doctor"])
+        assert result.exit_code == 0
 
     def test_doctor_shows_auto_enhance_not_installed(
         self, mocker

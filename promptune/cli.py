@@ -297,11 +297,8 @@ def config(
 
     if reset:
         if click.confirm("Reset config to defaults?"):
-            config_path.parent.mkdir(
-                parents=True, exist_ok=True
-            )
-            config_path.write_text(
-                generate_default_config()
+            _secure_write_text(
+                config_path, generate_default_config()
             )
             click.echo("Config reset to defaults.")
         return
@@ -333,15 +330,32 @@ def config(
         return
 
 
+def _secure_write_text(config_path: Path, text: str) -> None:
+    """Atomically write a config file with owner-only (0o600) permissions.
+
+    Config may contain plaintext API keys, so it must never be world/group
+    readable. Mirrors the hook installer's secure-write pattern.
+    """
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = config_path.with_suffix(config_path.suffix + ".tmp")
+    tmp.write_text(text)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, config_path)
+
+
+def _toml_assignment(field: str, value: object) -> str:
+    """Render a single TOML key/value assignment line."""
+    if isinstance(value, str):
+        return f'{field} = "{value}"'
+    return f"{field} = {value}"
+
+
 def _update_config_value(
     config_path: Path, key: str, value: object
 ) -> None:
     """Update a single config value in TOML file."""
     if not config_path.exists():
-        config_path.parent.mkdir(
-            parents=True, exist_ok=True
-        )
-        config_path.write_text(generate_default_config())
+        _secure_write_text(config_path, generate_default_config())
 
     content = config_path.read_text()
     section, field = key.split(".", 1)
@@ -362,29 +376,26 @@ def _update_config_value(
             stripped.startswith(f"{field} ")
             or stripped.startswith(f"{field}=")
         ):
-            if isinstance(value, str):
-                lines[i] = f'{field} = "{value}"'
-            else:
-                lines[i] = f"{field} = {value}"
+            lines[i] = _toml_assignment(field, value)
             updated = True
             break
 
     if not updated:
-        # Add the key to the section
+        # Insert into an existing [section], or create the section if absent
+        # (a partial hand-edited config may omit it entirely).
+        section_found = False
         for i, line in enumerate(lines):
             if line.strip().startswith(f"[{section}]"):
-                if isinstance(value, str):
-                    lines.insert(
-                        i + 1,
-                        f'{field} = "{value}"',
-                    )
-                else:
-                    lines.insert(
-                        i + 1, f"{field} = {value}"
-                    )
+                lines.insert(i + 1, _toml_assignment(field, value))
+                section_found = True
                 break
+        if not section_found:
+            if lines and lines[-1].strip() != "":
+                lines.append("")
+            lines.append(f"[{section}]")
+            lines.append(_toml_assignment(field, value))
 
-    config_path.write_text("\n".join(lines) + "\n")
+    _secure_write_text(config_path, "\n".join(lines) + "\n")
 
 
 @config.command("init")
@@ -540,7 +551,12 @@ def doctor_cmd() -> None:
                 f"{installer.name} (not detected)"
             )
             continue
-        installed = installer.is_installed()
+        try:
+            installed = installer.is_installed()
+        except (AttributeError, TypeError):
+            # Malformed/hand-edited settings file \u2014 treat as not installed
+            # rather than crashing the whole doctor run.
+            installed = False
         symbol = "\u2713" if installed else "\u2717"
         cfg = load_config()
         threshold = cfg.get("auto_enhance", {}).get(

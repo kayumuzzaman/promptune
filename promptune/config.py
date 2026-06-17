@@ -93,7 +93,12 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     """Merge override into base recursively."""
     result = copy.deepcopy(base)
     for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+        if key in result and isinstance(result[key], dict):
+            if not isinstance(value, dict):
+                raise ConfigError(
+                    f"Invalid config: section [{key}] must be a table, "
+                    f"got {type(value).__name__}."
+                )
             result[key] = _deep_merge(result[key], value)
         else:
             result[key] = copy.deepcopy(value)
@@ -139,6 +144,17 @@ def _auto_downgrade_tier(config: dict[str, Any]) -> dict[str, Any]:
     by falling back to Tier 0 (deterministic rules, free, instant).
     """
     max_tier = config["enhancement"]["max_tier"]
+    # Validate type/range up front so a malformed file value surfaces as a
+    # clean ConfigError instead of a raw TypeError in the comparisons below
+    # (or being silently clamped, which would mask an invalid config).
+    if isinstance(max_tier, bool) or not isinstance(max_tier, int):
+        raise ConfigError(
+            f"Invalid max_tier {max_tier!r}. Must be an integer 0, 1, or 2."
+        )
+    if max_tier < 0 or max_tier > 2:
+        raise ConfigError(
+            f"Invalid max_tier {max_tier}. Must be 0, 1, or 2."
+        )
     if max_tier == 0:
         return config
 

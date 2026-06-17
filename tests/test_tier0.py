@@ -198,6 +198,24 @@ def test_rule_negation_rewrite_spaced_do_not_use() -> None:
     assert "avoid use " not in result.enhanced.lower()
 
 
+def test_rule_negation_rewrite_spaced_do_not_forget() -> None:
+    """'do not forget' rewrites to 'remember to', not 'avoid forget'."""
+    prompt = "Do not forget to add error handling in the auth module"
+    score = score_prompt(prompt)
+    result = apply_rules(prompt, score)
+    assert "remember to" in result.enhanced.lower()
+    assert "avoid forget" not in result.enhanced.lower()
+
+
+def test_rule_negation_rewrite_spaced_do_not_ignore() -> None:
+    """'do not ignore' rewrites to 'pay attention to', not 'avoid ignore'."""
+    prompt = "Do not ignore the edge cases when you write the parser"
+    score = score_prompt(prompt)
+    result = apply_rules(prompt, score)
+    assert "pay attention to" in result.enhanced.lower()
+    assert "avoid ignore" not in result.enhanced.lower()
+
+
 def test_rule_add_role() -> None:
     """Prepends role when context score is low."""
     score = score_prompt(

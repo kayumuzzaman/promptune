@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from promptune.hooks import detect_tools, get_installers
+from promptune.hooks import (
+    HookConfigError,
+    detect_tools,
+    get_installers,
+)
 from promptune.hooks.claude_code import (
     HOOK_COMMAND,
     ClaudeCodeInstaller,
@@ -96,6 +100,42 @@ class TestClaudeCodeInstall:
         installer = ClaudeCodeInstaller()
         # Must not raise AttributeError on the bare-string entry.
         assert installer.is_installed() is False
+
+    def test_install_with_str_hooks_raises_config_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps({"theme": "dark", "hooks": "nope"})
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH", settings_path
+        )
+        installer = ClaudeCodeInstaller()
+        with pytest.raises(HookConfigError):
+            installer.install()
+        # Unrelated settings preserved (file not clobbered).
+        data = json.loads(settings_path.read_text())
+        assert data["theme"] == "dark"
+        assert data["hooks"] == "nope"
+
+    def test_install_with_str_userpromptsubmit_raises_config_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {"theme": "dark", "hooks": {"UserPromptSubmit": "existing"}}
+            )
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH", settings_path
+        )
+        installer = ClaudeCodeInstaller()
+        with pytest.raises(HookConfigError):
+            installer.install()
+        data = json.loads(settings_path.read_text())
+        assert data["theme"] == "dark"
 
     def test_is_installed_tolerates_corrupt_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

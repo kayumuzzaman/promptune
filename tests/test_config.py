@@ -344,6 +344,44 @@ max_tier = 5
         )
 
 
+def test_wrong_typed_max_tier_raises_config_error(config_file: Path) -> None:
+    """A string max_tier raises ConfigError, not a raw TypeError."""
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('[enhancement]\nmax_tier = "two"\n')
+    with pytest.raises(ConfigError, match="[Tt]ier"):
+        load_config(config_path=config_file)
+
+
+def test_wrong_typed_enhancement_section_raises_config_error(
+    config_file: Path,
+) -> None:
+    """A scalar where a [section] table is expected raises ConfigError."""
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('enhancement = "oops"\n')
+    with pytest.raises(ConfigError, match="enhancement"):
+        load_config(config_path=config_file)
+
+
+def test_wrong_typed_api_keys_section_raises_config_error(
+    config_file: Path,
+) -> None:
+    """A scalar api_keys raises ConfigError instead of AttributeError."""
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('api_keys = "nope"\n')
+    with pytest.raises(ConfigError, match="api_keys"):
+        load_config(config_path=config_file)
+
+
+def test_file_max_tier_out_of_range_raises_config_error(
+    config_file: Path,
+) -> None:
+    """An out-of-range max_tier in the file is reported, not silently clamped."""
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text("[enhancement]\nmax_tier = 9\n")
+    with pytest.raises(ConfigError, match="[Tt]ier"):
+        load_config(config_path=config_file)
+
+
 def test_config_init_creates_file(config_dir: Path) -> None:
     """'config init' creates config at expected path."""
     config_file = config_dir / "config.toml"

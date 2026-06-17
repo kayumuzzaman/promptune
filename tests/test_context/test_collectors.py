@@ -126,6 +126,44 @@ def test_shell_history_recent_commands(
     assert len(result.recent_commands) == 3
 
 
+def test_shell_history_does_not_load_entire_large_file(
+    mocker: MockerFixture, tmp_path
+) -> None:
+    """A huge history file is tail-read, not slurped whole into RAM."""
+    hist_file = tmp_path / ".zsh_history"
+    hist_file.write_text(
+        "\n".join(f"echo cmd_{i}" for i in range(10000)) + "\n"
+    )
+    mocker.patch(
+        "promptune.context.collectors._find_history_file",
+        return_value=hist_file,
+    )
+    read_text_spy = mocker.spy(Path, "read_text")
+
+    result = collect_shell_history(max_lines=5)
+
+    assert len(result.recent_commands) <= 5
+    # Must not slurp the whole file via read_text (bounded tail read instead).
+    assert read_text_spy.call_count == 0
+
+
+def test_get_project_root_uses_short_git_timeout(
+    mocker: MockerFixture,
+) -> None:
+    """Project-root lookup uses the short (0.3s) git timeout, not 2.0s."""
+    from promptune.context.collectors import _get_project_root
+
+    spy = mocker.patch(
+        "promptune.context.collectors._safe_git", return_value=""
+    )
+    root = _get_project_root()
+
+    spy.assert_called_once()
+    _, kwargs = spy.call_args
+    assert kwargs.get("timeout", 2.0) <= 0.3
+    assert isinstance(root, Path)
+
+
 def test_shell_history_error_patterns(
     mocker: MockerFixture, tmp_path
 ) -> None:
@@ -343,6 +381,50 @@ def test_collect_context_timeout(
     assert result.git.branch == ""
 
 
+def test_collect_context_does_not_block_on_slow_collector(
+    mocker: MockerFixture,
+) -> None:
+    """A hung collector must not block the call past the timeout budget."""
+    import time
+
+    def slow_git():
+        time.sleep(2)
+        return GitContext(
+            branch="slow",
+            recent_commits=[],
+            modified_files=[],
+            diff_stats="",
+            stash_count=0,
+        )
+
+    mocker.patch("promptune.context.collect_git", side_effect=slow_git)
+    mocker.patch(
+        "promptune.context.collect_shell_history",
+        return_value=ShellHistoryContext(
+            recent_commands=[], error_patterns=[], session_intent="unknown"
+        ),
+    )
+    mocker.patch(
+        "promptune.context.collect_tech_stack",
+        return_value=TechStackContext(
+            languages=[], frameworks=[], package_manager=None
+        ),
+    )
+    mocker.patch(
+        "promptune.context.collect_environment",
+        return_value=EnvironmentContext(
+            in_venv=False, in_container=False, in_ci=False, in_ssh=False
+        ),
+    )
+
+    start = time.monotonic()
+    result = collect_context(timeout_ms=100)
+    elapsed = time.monotonic() - start
+
+    assert result.git.branch == ""
+    assert elapsed < 1.0  # must not wait for the 2s collector to finish
+
+
 # --- _find_history_file: no candidates exist ---
 
 
@@ -416,9 +498,8 @@ def test_shell_history_unreadable(
         "promptune.context.collectors._find_history_file",
         return_value=hist_file,
     )
-    mocker.patch.object(
-        type(hist_file),
-        "read_text",
+    mocker.patch(
+        "builtins.open",
         side_effect=PermissionError("denied"),
     )
 

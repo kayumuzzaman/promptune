@@ -13,16 +13,30 @@ def _translate_key(canonical: str, shell: str) -> str:
     If no '+' separator is found, passes through verbatim (raw shell-native key).
     """
     if "+" not in canonical:
+        # Raw shell-native key passthrough. Reject shell metacharacters so a
+        # crafted --key can't break out of the generated quoted bind line and
+        # inject commands when the widget is eval'd.
+        if any(c in canonical for c in "'\"`;$\n\r"):
+            raise ValueError(
+                f"Unsafe raw key binding {canonical!r}: contains shell "
+                "metacharacters."
+            )
         return canonical
 
     parts = canonical.split()  # Split chord: "ctrl+x ctrl+e" -> ["ctrl+x", "ctrl+e"]
 
     for part in parts:
-        modifier = part.partition("+")[0].lower()
+        modifier, _, char = part.partition("+")
+        modifier = modifier.lower()
         if modifier not in {"ctrl", "alt"}:
             raise ValueError(
                 f"Unsupported hotkey modifier {modifier!r} in "
                 f"{canonical!r}. Supported modifiers: ctrl, alt."
+            )
+        if len(char) != 1 or not char.isalnum():
+            raise ValueError(
+                f"Invalid hotkey {part!r} in {canonical!r}: expected a "
+                "single alphanumeric character after the modifier."
             )
 
     if shell == "zsh":

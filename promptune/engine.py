@@ -185,7 +185,15 @@ def enhance(
 
     if history_enabled:
         try:
-            with HistoryStore() as _store:
+            with HistoryStore(
+                db_path=Path(
+                    history_cfg.get(
+                        "db_path",
+                        "~/.local/share/promptune/history.db",
+                    )
+                ).expanduser(),
+                max_entries=history_cfg.get("max_entries", 10000),
+            ) as _store:
                 # Dedup check — early exit if similar prompt was recently enhanced
                 if dedup_cfg.get("dedup_enabled", True):
                     hit = dedup_check(
@@ -308,21 +316,46 @@ def enhance(
     model_name: str | None = None
 
     if forced_tier:
-        if max_tier == 0:
-            pass
-        elif max_tier == 1:
-            enhanced = _try_tier1(
-                enhanced, system_prompt, cfg
-            )
-            tier_used = 1
-            provider_name = "local"
-            model_name = cfg["local_llm"]["model"]
+        # Graceful degradation: a forced tier that fails falls back to the
+        # tier below (down to tier 0) with a logged warning, mirroring the
+        # auto-routing contract rather than raising a hard error.
+        if max_tier == 1:
+            try:
+                enhanced = _try_tier1(
+                    enhanced, system_prompt, cfg
+                )
+                tier_used = 1
+                provider_name = "local"
+                model_name = cfg["local_llm"]["model"]
+            except (ProviderError, ConfigError) as exc:
+                _log.warning(
+                    "Forced tier 1 failed, falling back to tier 0: %s", exc
+                )
         elif max_tier >= 2:
-            result_text, provider_name, model_name = _try_tier2(
-                enhanced, system_prompt, cfg
-            )
-            enhanced = result_text
-            tier_used = 2
+            try:
+                result_text, provider_name, model_name = _try_tier2(
+                    enhanced, system_prompt, cfg
+                )
+                enhanced = result_text
+                tier_used = 2
+            except (ProviderError, ConfigError) as exc:
+                _log.warning(
+                    "Forced tier 2 failed, falling back: %s", exc
+                )
+                if cfg["local_llm"]["enabled"]:
+                    try:
+                        enhanced = _try_tier1(
+                            enhanced, system_prompt, cfg
+                        )
+                        tier_used = 1
+                        provider_name = "local"
+                        model_name = cfg["local_llm"]["model"]
+                    except (ProviderError, ConfigError) as exc2:
+                        _log.warning(
+                            "Tier 1 fallback also failed, "
+                            "using tier 0: %s",
+                            exc2,
+                        )
     else:
         if score_after.total < 70:
             # Try Tier 1 if enabled

@@ -110,6 +110,22 @@ def test_claude_empty_response_handling(
         provider.enhance("prompt", "system")
 
 
+def test_claude_empty_textblock_raises(mocker: MockerFixture) -> None:
+    """A TextBlock with empty text is treated as an empty response."""
+    mock_client = mocker.MagicMock()
+    mock_client.messages.create.return_value = mocker.MagicMock(
+        content=[_text_block("   ")]
+    )
+    mocker.patch(
+        "promptune.providers.anthropic.anthropic.Anthropic",
+        return_value=mock_client,
+    )
+
+    provider = ClaudeProvider(api_key="test-key", model="m")
+    with pytest.raises(ProviderError, match="[Ee]mpty"):
+        provider.enhance("prompt", "system")
+
+
 def test_claude_registered_in_registry() -> None:
     """'claude' name in provider registry."""
     from promptune.providers.anthropic import register

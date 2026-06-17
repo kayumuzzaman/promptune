@@ -19,9 +19,17 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
         r"Bearer\s+[a-zA-Z0-9._-]{20,}",
         re.IGNORECASE,
     ),
+    # Any URL carrying basic-auth userinfo (scheme://user:pass@): covers
+    # postgres, postgresql, mysql, mongodb, redis, amqp(s), mssql, http(s),
+    # ftp, etc. — redacts the credential-bearing prefix.
     re.compile(
-        r"(postgres|mysql|mongodb|redis)://[^:]+:[^@]+@",
+        r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^:/@\s]+:[^@/\s]+@",
         re.IGNORECASE,
+    ),
+    # PEM private-key blocks (markers + body, any body length).
+    re.compile(
+        r"-----BEGIN[^-]*PRIVATE KEY-----.*?-----END[^-]*-----",
+        re.DOTALL,
     ),
 ]
 
@@ -64,6 +72,16 @@ def _looks_like_secret(token: str) -> bool:
     classes = has_lower + has_upper + has_digit
     entropy = _shannon_entropy(token)
     if "/" in token:
+        # Structured path/branch/ticket names (e.g. "feature/JIRA-1234-x")
+        # split into many short segments on '/', '-' and '_'. A real
+        # slash-bearing base64 secret instead has a long unbroken
+        # high-entropy run. Treat tokens whose longest separator-delimited
+        # segment is short as structured context, not secrets.
+        longest_segment = max(
+            (len(seg) for seg in re.split(r"[/_-]", token)), default=0
+        )
+        if longest_segment < 16:
+            return False
         # Path-like vs base64-with-slash: a source path is typically
         # digit-free and lower entropy, while a slash-bearing credential has
         # digits and high entropy. Require the stronger signal so paths such

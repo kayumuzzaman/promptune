@@ -102,6 +102,26 @@ class TestTranslateKey:
             with pytest.raises(ValueError, match="Unsupported"):
                 _translate_key(combo, "zsh")
 
+    def test_raw_passthrough_with_shell_metachars_rejected(self) -> None:
+        import pytest
+
+        # A crafted raw key must not be able to break out of the generated
+        # quoted bind line and inject shell commands.
+        with pytest.raises(ValueError):
+            _translate_key("'; rm -rf X; '", "bash")
+
+    def test_empty_char_after_modifier_rejected(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError):
+            _translate_key("ctrl+", "zsh")
+
+    def test_multichar_after_modifier_rejected(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError):
+            _translate_key("ctrl+abc", "zsh")
+
 
 
 class TestGenerateZshWidget:
