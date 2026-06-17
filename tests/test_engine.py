@@ -164,6 +164,25 @@ def test_engine_graceful_degradation_tier1_fail(
     assert result.tier_used in (0, 2)
 
 
+def test_engine_unknown_provider_degrades(
+    mock_config: dict,
+) -> None:
+    """An unregistered --provider name degrades to a lower tier, not a crash.
+
+    registry.create() raises ProviderNotFoundError (not ProviderError); the
+    routing must catch it and fall back rather than propagate.
+    """
+    result = enhance(
+        "fix the bug",
+        mock_config,
+        provider_override="totally-not-a-real-provider",
+        tier_override=2,
+    )
+
+    assert isinstance(result, EnhanceResult)
+    assert result.tier_used in (0, 1)
+
+
 def test_engine_tier_override(
     mocker: MockerFixture, mock_config: dict
 ) -> None:

@@ -826,9 +826,17 @@ def history_cmd(
 def _get_history_store() -> HistoryStore | None:
     """Get history store instance."""
     cfg = load_config()
-    if not cfg.get("history", {}).get("enabled", True):
+    history_cfg = cfg.get("history", {})
+    if not history_cfg.get("enabled", True):
         return None
-    return HistoryStore()
+    return HistoryStore(
+        db_path=Path(
+            history_cfg.get(
+                "db_path", "~/.local/share/promptune/history.db"
+            )
+        ).expanduser(),
+        max_entries=history_cfg.get("max_entries", 10000),
+    )
 
 
 # --- Daemon command group ---

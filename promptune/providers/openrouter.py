@@ -64,13 +64,18 @@ class OpenRouterProvider(BaseProvider):
                 redact_secrets(str(e), self.api_key)
             ) from e
 
-        choices = data.get("choices", [])
-        if not choices:
+        if not isinstance(data, dict):
+            raise ProviderError(
+                "Unexpected response shape from OpenRouter API"
+            )
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices:
             raise ProviderError(
                 "Empty response from OpenRouter API"
             )
-
-        content = choices[0].get("message", {}).get("content", "")
+        first = choices[0]
+        message = first.get("message") if isinstance(first, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
         if not content:
             raise ProviderError(
                 "Empty response from OpenRouter API"

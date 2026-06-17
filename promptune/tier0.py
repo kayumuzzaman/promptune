@@ -307,7 +307,10 @@ def rule_code_delimiters(
         elif in_code and (
             is_code_line
             or line.startswith((' ', '\t'))
+            or line == ""
         ):
+            # Blank lines inside an indented block are code-continuation;
+            # closing the fence on them would split one block into several.
             code_buffer.append(line)
         else:
             if code_buffer:

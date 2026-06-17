@@ -35,6 +35,7 @@ from promptune.preferences import analyse_edit_patterns, analyse_rule_preference
 from promptune.providers import (
     BaseProvider,
     ProviderError,
+    ProviderNotFoundError,
     ProviderRegistry,
 )
 from promptune.providers.anthropic import register as register_claude
@@ -327,7 +328,7 @@ def enhance(
                 tier_used = 1
                 provider_name = "local"
                 model_name = cfg["local_llm"]["model"]
-            except (ProviderError, ConfigError) as exc:
+            except (ProviderError, ProviderNotFoundError, ConfigError) as exc:
                 _log.warning(
                     "Forced tier 1 failed, falling back to tier 0: %s", exc
                 )
@@ -338,7 +339,7 @@ def enhance(
                 )
                 enhanced = result_text
                 tier_used = 2
-            except (ProviderError, ConfigError) as exc:
+            except (ProviderError, ProviderNotFoundError, ConfigError) as exc:
                 _log.warning(
                     "Forced tier 2 failed, falling back: %s", exc
                 )
@@ -350,7 +351,7 @@ def enhance(
                         tier_used = 1
                         provider_name = "local"
                         model_name = cfg["local_llm"]["model"]
-                    except (ProviderError, ConfigError) as exc2:
+                    except (ProviderError, ProviderNotFoundError, ConfigError) as exc2:
                         _log.warning(
                             "Tier 1 fallback also failed, "
                             "using tier 0: %s",
@@ -367,7 +368,7 @@ def enhance(
                     tier_used = 1
                     provider_name = "local"
                     model_name = cfg["local_llm"]["model"]
-                except (ProviderError, ConfigError):
+                except (ProviderError, ProviderNotFoundError, ConfigError):
                     pass
 
             # Try Tier 2 if Tier 1 didn't work
@@ -382,7 +383,7 @@ def enhance(
                     )
                     enhanced = result_text
                     tier_used = 2
-                except (ProviderError, ConfigError):
+                except (ProviderError, ProviderNotFoundError, ConfigError):
                     pass
 
     # Re-score final result if AI tier was used

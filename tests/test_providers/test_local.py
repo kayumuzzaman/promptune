@@ -193,3 +193,29 @@ def test_local_empty_response_handling(
 
     with pytest.raises(ProviderError, match="[Ee]mpty"):
         provider.enhance("prompt", "system")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        ["not", "a", "dict"],
+        "a bare string",
+        {"choices": "nonsense"},
+        {"choices": ["plain string"]},
+        {"choices": [{"message": "oops"}]},
+    ],
+)
+def test_local_malformed_response_raises_provider_error(
+    mocker: MockerFixture, payload: object
+) -> None:
+    """A malformed local-LLM body degrades to ProviderError, not AttributeError."""
+    provider = LocalProvider(
+        model="qwen2.5:3b", host="http://localhost:11434"
+    )
+    mock_response = mocker.MagicMock()
+    mock_response.json.return_value = payload
+    mock_response.raise_for_status = mocker.MagicMock()
+    _mock_httpx_client(mocker, mock_response)
+
+    with pytest.raises(ProviderError):
+        provider.enhance("prompt", "system")

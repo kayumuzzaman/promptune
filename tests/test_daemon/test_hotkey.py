@@ -199,13 +199,15 @@ class TestEventCallback:
         mock_q.kCGEventFlagMaskAlternate = 0x80000
         mock_q.kCGEventFlagMaskCommand = 0x100000
         mock_q.kCGKeyboardEventKeycode = 9
+        mock_q.kCGKeyboardEventAutorepeat = 8
 
         keycode = 14
         modifier_mask = 0x40000 | 0x20000  # ctrl+shift
 
-        mock_q.CGEventGetIntegerValueField.return_value = (
-            keycode
-        )
+        def _field(_ev, field):
+            return 0 if field == 8 else keycode
+
+        mock_q.CGEventGetIntegerValueField.side_effect = _field
         mock_q.CGEventGetFlags.return_value = modifier_mask
 
         fired = []
@@ -229,13 +231,49 @@ class TestEventCallback:
         mock_q.kCGEventFlagMaskAlternate = 0x80000
         mock_q.kCGEventFlagMaskCommand = 0x100000
         mock_q.kCGKeyboardEventKeycode = 9
+        mock_q.kCGKeyboardEventAutorepeat = 8
 
-        mock_q.CGEventGetIntegerValueField.return_value = 99
+        def _field(_ev, field):
+            return 0 if field == 8 else 99
+
+        mock_q.CGEventGetIntegerValueField.side_effect = _field
         mock_q.CGEventGetFlags.return_value = 0x40000
 
         fired = []
         handler = _event_callback(
             lambda: fired.append(True), 14, 0x40000
+        )
+        event = MagicMock()
+        result = handler(None, 10, event, None)
+        assert fired == []
+        assert result is event
+
+    @patch("promptune.daemon.hotkey.Quartz")
+    def test_autorepeat_event_skips(self, mock_q):
+        """OS key-repeat events must not fire the callback."""
+        from promptune.daemon.hotkey import _event_callback
+
+        mock_q.kCGEventKeyDown = 10
+        mock_q.kCGEventFlagMaskControl = 0x40000
+        mock_q.kCGEventFlagMaskShift = 0x20000
+        mock_q.kCGEventFlagMaskAlternate = 0x80000
+        mock_q.kCGEventFlagMaskCommand = 0x100000
+        mock_q.kCGKeyboardEventKeycode = 9
+        mock_q.kCGKeyboardEventAutorepeat = 8
+
+        keycode = 14
+        modifier_mask = 0x40000 | 0x20000
+
+        def _field(_ev, field):
+            # Autorepeat field is set (held key); keycode would otherwise match.
+            return 1 if field == 8 else keycode
+
+        mock_q.CGEventGetIntegerValueField.side_effect = _field
+        mock_q.CGEventGetFlags.return_value = modifier_mask
+
+        fired = []
+        handler = _event_callback(
+            lambda: fired.append(True), keycode, modifier_mask
         )
         event = MagicMock()
         result = handler(None, 10, event, None)

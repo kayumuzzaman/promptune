@@ -143,6 +143,16 @@ class X11Hotkey(HotkeyBackend):
             from Xlib import display as xdisplay
 
             d = xdisplay.Display()
+            # Suppress synthetic KeyRelease/KeyPress pairs the X server emits
+            # for key autorepeat, so holding the hotkey doesn't fire repeatedly.
+            # Best-effort: not all servers/bindings expose this, so tolerate
+            # its absence (the held-key guard below is the backstop).
+            try:
+                d.set_detectable_auto_repeat(True)
+            except Exception:
+                _log.debug(
+                    "X11 detectable auto-repeat unavailable", exc_info=True
+                )
             root = d.screen().root
             keysym = XK.string_to_keysym(self._key_name)
             keycode = d.keysym_to_keycode(keysym)
@@ -156,15 +166,21 @@ class X11Hotkey(HotkeyBackend):
                     X.GrabModeAsync, X.GrabModeAsync,
                 )
 
+            key_held = False
             while not self._stop_event.is_set():
                 if d.pending_events() > 0:
                     event = d.next_event()
-                    if (
-                        event.type == X.KeyPress
-                        and event.detail == keycode
-                        and self._callback
-                    ):
-                        self._callback()
+                    if event.detail != keycode:
+                        continue
+                    if event.type == X.KeyPress:
+                        # Fire only on the initial press; ignore further
+                        # KeyPress events until an intervening KeyRelease, so a
+                        # held key (autorepeat) triggers exactly one run.
+                        if not key_held and self._callback:
+                            key_held = True
+                            self._callback()
+                    elif event.type == X.KeyRelease:
+                        key_held = False
                 else:
                     time.sleep(0.05)
         except Exception:

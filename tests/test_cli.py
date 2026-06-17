@@ -1983,6 +1983,31 @@ def test_get_history_store_enabled(mocker):
     assert result is mock_store
 
 
+def test_get_history_store_passes_configured_path(mocker):
+    """_get_history_store honours configured db_path and max_entries."""
+    from pathlib import Path
+
+    from promptune.cli import _get_history_store
+
+    mocker.patch(
+        "promptune.cli.load_config",
+        return_value={
+            "history": {
+                "enabled": True,
+                "db_path": "~/custom/place/history.db",
+                "max_entries": 42,
+            }
+        },
+    )
+    store_cls = mocker.patch("promptune.cli.HistoryStore")
+
+    _get_history_store()
+
+    kwargs = store_cls.call_args.kwargs
+    assert kwargs["max_entries"] == 42
+    assert kwargs["db_path"] == Path("~/custom/place/history.db").expanduser()
+
+
 def test_malformed_config_shows_clean_error_not_traceback(tmp_path) -> None:
     """Commands that load config report a clean error on a malformed file."""
     bad = tmp_path / "config.toml"

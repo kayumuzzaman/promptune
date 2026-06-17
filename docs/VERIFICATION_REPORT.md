@@ -9,11 +9,11 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-15 |
-| Branch | feat/linux-daemon-hardening (merged with main) |
+| Date | 2026-06-17 |
+| Branch | fix/validation-loop-findings |
 | Python | 3.14.3 |
-| Total Tests | 944 |
-| Test Result | **937 passed, 7 linux-only deselected, 0 failed** |
+| Total Tests | 1107 |
+| Test Result | **1101 passed, 6 skipped, 0 failed** |
 | Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
@@ -114,6 +114,31 @@
 ---
 
 ## Known Issues
+
+### 0. Multi-agent codebase audit (2026-06-17) — 8 findings [RESOLVED]
+A parallel sub-agent review of the whole codebase surfaced 8 latent defects
+(tests were green but missed these). All fixed with regression tests this session:
+
+- **CRITICAL** `daemon/daemon.py` — hotkey guard was a `threading.Event` with a
+  check-then-set race; overlapping events (OS key autorepeat) could run
+  `_on_hotkey` concurrently. Now an atomic `threading.Lock` (`acquire(blocking=False)`).
+- **CRITICAL** `daemon/hotkey.py` (macOS) — CGEventTap fired on OS key-repeat
+  events. Now ignores events with `kCGKeyboardEventAutorepeat` set.
+- **CRITICAL** `daemon/platform/linux_x11.py` — X11 loop fired on every
+  autorepeat `KeyPress`. Now enables detectable auto-repeat (best-effort) and
+  tracks held-key via `KeyRelease` so a held hotkey fires once.
+- **HIGH** `providers/openrouter.py` & `providers/local.py` — response parsing
+  ran outside the `try`; a malformed (non-dict) API body raised `AttributeError`
+  past the `ProviderError` handler, breaking tier fallback. Now shape-guarded.
+- **HIGH** `engine.py` — tier-1/2 `except` clauses missed `ProviderNotFoundError`
+  (not a `ProviderError` subclass), so an unknown `--provider` crashed instead of
+  degrading. Added to all five except tuples.
+- **HIGH** `cli.py` — `_get_history_store()` ignored configured `history.db_path`
+  / `max_entries`, so `promptune history*` operated on the wrong DB. Now mirrors
+  engine construction.
+- `tier0.py` — `rule_code_delimiters` closed the code fence on blank lines inside
+  an indented block, splitting one block into several. Blank lines now continue
+  the block.
 
 ### 1. ~~SQLite Unclosed Connection Warnings~~ [RESOLVED]
 **Fixed:** `HistoryStore.close()` is now idempotent (None guard on `_conn_inner`). Test fixture uses `yield`+teardown. Zero ResourceWarnings with `-W error::ResourceWarning`.
