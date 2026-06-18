@@ -60,6 +60,26 @@ class TestNotify:
         script = call_args[0][0][2]
         assert '\\"hello\\"' in script
 
+    def test_swallows_subprocess_timeout(self) -> None:
+        """A hung osascript must not raise — callers run notify() inside the
+        clipboard-delivery try/except, where a raise is misreported as a paste
+        failure."""
+        import subprocess
+
+        with patch(
+            "promptune.daemon.notify.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="osascript", timeout=5),
+        ):
+            notify("Title", "Message")  # must not raise
+
+    def test_swallows_missing_binary(self) -> None:
+        """A missing osascript binary (OSError) must not raise."""
+        with patch(
+            "promptune.daemon.notify.subprocess.run",
+            side_effect=FileNotFoundError("osascript not found"),
+        ):
+            notify("Title", "Message")  # must not raise
+
     @patch("promptune.daemon.notify.subprocess")
     def test_escapes_quotes_in_title(self, mock_subprocess: MagicMock) -> None:
         notify('Ti"tle', "Message", sound=False)

@@ -6,6 +6,7 @@ the abstract interfaces defined in base.py.  No behaviour change.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from typing import Callable
 
@@ -82,7 +83,20 @@ class MacOSService(ServiceBackend):
         la_mod.uninstall_login_item()
 
     def purge(self) -> None:
+        # Remove all daemon files (service, socket, PID, undo, logs) per the
+        # ServiceBackend.purge() contract — mirrors LinuxService.purge(). Lazy
+        # import avoids a circular import (daemon -> platform -> macos).
         la_mod.uninstall_login_item()
+        from promptune.daemon import daemon as daemon_mod
+
+        for path in (
+            daemon_mod.SOCKET_PATH,
+            daemon_mod.PID_FILE,
+            daemon_mod.UNDO_FILE,
+            daemon_mod.LOG_FILE,
+        ):
+            with contextlib.suppress(FileNotFoundError):
+                path.unlink()
 
     def is_installed(self) -> bool:
         return la_mod.is_installed()

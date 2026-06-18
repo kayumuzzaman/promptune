@@ -164,6 +164,55 @@ def test_engine_graceful_degradation_tier1_fail(
     assert result.tier_used in (0, 2)
 
 
+def test_engine_records_to_history(mock_config: dict, tmp_path) -> None:
+    """enhance() must persist a row so dedup/history/preferences have data."""
+    from promptune.history import HistoryStore
+
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["enhancement"]["max_tier"] = 0  # deterministic tier 0
+
+    result = enhance("fix the bug", mock_config)
+
+    with HistoryStore(db_path=db) as store:
+        entries = store.recent(n=10)
+    assert len(entries) == 1
+    assert entries[0].original == "fix the bug"
+    assert entries[0].enhanced == result.enhanced
+    assert entries[0].decision == "accept"
+    assert entries[0].tier_used == 0
+
+
+def test_engine_no_record_when_history_disabled(
+    mock_config: dict, tmp_path
+) -> None:
+    """No history write (and no DB file) when history is disabled."""
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["history"]["enabled"] = False
+    mock_config["enhancement"]["max_tier"] = 0
+
+    enhance("fix the bug", mock_config)
+
+    assert not db.exists()
+
+
+def test_engine_recording_failure_does_not_break_enhance(
+    mock_config: dict, mocker: MockerFixture
+) -> None:
+    """A history-store failure must not propagate out of enhance()."""
+    mock_config["enhancement"]["max_tier"] = 0
+    mocker.patch(
+        "promptune.engine.HistoryStore",
+        side_effect=OSError("disk full"),
+    )
+
+    result = enhance("fix the bug", mock_config)
+
+    assert isinstance(result, EnhanceResult)
+    assert result.enhanced
+
+
 def test_engine_unknown_provider_degrades(
     mock_config: dict,
 ) -> None:

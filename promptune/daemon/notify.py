@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 
 
@@ -25,11 +26,16 @@ def notify(title: str, message: str, sound: bool = True) -> None:
     if sound:
         script += ' sound name "Tink"'
 
-    subprocess.run(
-        ["osascript", "-e", script],
-        timeout=5,
-        check=False,
-    )
+    # A notification is best-effort feedback; it must never raise. osascript can
+    # hang (TimeoutExpired) or be missing (OSError), and callers run this inside
+    # the clipboard-delivery try/except — a raise here would be misreported as a
+    # paste failure even though the enhanced text was delivered fine.
+    with contextlib.suppress(subprocess.SubprocessError, OSError):
+        subprocess.run(
+            ["osascript", "-e", script],
+            timeout=5,
+            check=False,
+        )
 
 
 def notify_enhanced(score_before: int, score_after: int) -> None:
