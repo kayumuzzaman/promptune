@@ -34,7 +34,6 @@ Promptune runs **locally**. Tier 0 (rule-based) needs no API key and no network.
 - **Shell integration**: Ctrl+E widget for Zsh, Bash, and Fish — enhances prompts inline
 - **MCP server**: exposes `enhance` and `score` tools to any MCP client (Claude Code, Cursor, Codex)
 - **Auto-enhance hook**: intercepts low-quality prompts in AI coding tools, enhances them, and silently injects the enhanced prompt as context
-- **Provider-specific formatting**: auto-selects XML, Markdown, or Plain based on target model
 - **Interactive setup wizard**: guided config init with provider selection and masked API key input
 - **Semantic deduplication**: detects near-duplicate prompts and returns cached results instantly
 - **Preference learning**: learns from accept/reject/edit decisions to skip disliked rules automatically
@@ -231,9 +230,6 @@ promptune enhance -s detailed "build a payment system"
 # Force a specific tier (0=rules only, 1=local LLM, 2=cloud API)
 promptune enhance --tier 0 "fix the login bug"
 
-# Force output format
-promptune enhance --format markdown "explain kubernetes networking"
-
 # Skip TUI, print enhanced prompt directly to stdout
 promptune enhance --no-tui "add dark mode to my react app"
 
@@ -247,7 +243,7 @@ echo "build a REST API" | promptune enhance --no-tui
 promptune enhance --no-tui "refactor the user service" | pbcopy
 
 # Combine flags
-promptune enhance -p openrouter -s detailed --format xml --no-tui "design a caching layer"
+promptune enhance -p openrouter -s detailed --no-tui "design a caching layer"
 ```
 
 **All flags:**
@@ -257,7 +253,6 @@ promptune enhance -p openrouter -s detailed --format xml --no-tui "design a cach
 | `--provider` | `-p` | Override default provider (claude, openai, openrouter) |
 | `--style` | `-s` | Override enhancement style (minimal, balanced, detailed) |
 | `--tier` | | Force specific tier: 0 (rules only), 1 (local LLM), 2 (cloud API) |
-| `--format` | | Force output format: xml, markdown, plain |
 | `--no-tui` | | Print result directly to stdout, skip interactive TUI |
 | `--json` | | Output structured JSON with scores, tier, latency |
 

@@ -20,8 +20,6 @@
 ├─────────────┤
 │ providers/  │  API adapters — Claude, OpenAI, OpenRouter, local LLM
 ├─────────────┤
-│ formatter.py│  Provider-specific output formatting (XML, Markdown, Plain)
-├─────────────┤
 │  history.py │  SQLite-backed enhancement history with statistics
 ├─────────────┤
 │   dedup.py  │  TF-based cosine similarity — detects near-duplicate prompts

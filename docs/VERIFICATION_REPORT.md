@@ -10,10 +10,10 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-18 |
-| Branch | fix/validation-round4 |
+| Branch | fix/validation-round5 |
 | Python | 3.14.3 |
-| Total Tests | 1130 |
-| Test Result | **1124 passed, 6 skipped, 0 failed** |
+| Total Tests | 1109 |
+| Test Result | **1103 passed, 6 skipped, 0 failed** |
 | Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
@@ -114,6 +114,35 @@
 ---
 
 ## Known Issues
+
+### -4. Audit round 5 (2026-06-18) — 5 findings [RESOLVED, per user decisions]
+Fifth sub-agent pass. Findings were design decisions + consequences of the
+now-active history feature; resolved per explicit user direction:
+
+- **HIGH `formatter.py` (dead feature) — REMOVED.** The `--format-style` /
+  provider-formatting feature (XML/MD/Plain) was parsed but never applied to
+  output — `formatter.py` was never called by the pipeline. Per user decision,
+  removed: `formatter.py` + its tests, the `--format` CLI flag, the MCP
+  `output_format` param, the setup-wizard format prompt, and the `format_style`
+  config field/validation. The history `format_style` column is kept (nullable,
+  always written as `"auto"`) to avoid a DB migration; `EnhanceResult.format_style`
+  is now a vestigial constant `"auto"`. Docs updated (README, USER_GUIDE,
+  ARCHITECTURE, MANUAL_TESTING, CLAUDE.md).
+- **HIGH `gate.py` (recording pollution) — FIXED.** The auto-enhance gate
+  recorded every prompt as a confirmed `decision="accept"` with no accept/reject
+  surface, polluting dedup + preference learning. `enhance()` gained a
+  `record: bool = True` param; the gate now calls `enhance(record=False)`.
+- **HIGH `daemon/clipboard.py` paste_result — FIXED.** macOS `paste_result()`
+  always returned `True` even when the synthetic Cmd+V was dropped (no
+  accessibility trust), unlike the X11/Wayland backends. Now checks
+  `check_accessibility()` and returns `False` so the daemon tells the user to
+  paste manually instead of clobbering the clipboard.
+- **LOW `history.set_decision` — FIXED.** Now checks `rowcount` and debug-logs
+  when the target row was already pruned, instead of a silent no-op.
+- **MEDIUM dedup-hit rejection persistence — DEFERRED** (per user "fix gate +
+  mechanical only" decision). A reject of a dedup-served result still isn't
+  persisted; left as a known limitation rather than adding schema/source-column
+  complexity.
 
 ### -3. Audit round 4 + Codex PR-bot review (2026-06-18) — 6 findings [RESOLVED]
 Fourth sub-agent pass plus 2 P2 comments the Codex GitHub bot left on PR #16.

@@ -316,28 +316,25 @@ class TestPromptOptionalSettings:
         defaults: dict = {
             "default_mode": "balanced",
             "max_tier": 2,
-            "format_style": "auto",
         }
         with (
             patch("click.confirm", return_value=True),
-            patch("click.prompt", side_effect=["detailed", 1, "xml"]),
+            patch("click.prompt", side_effect=["detailed", 1]),
             patch("click.echo"),
         ):
             result, accepted = _prompt_optional_settings(defaults)
         assert result["default_mode"] == "detailed"
         assert result["max_tier"] == 1
-        assert result["format_style"] == "xml"
         assert accepted is True
 
     def test_keeps_defaults_on_enter(self) -> None:
         defaults: dict = {
             "default_mode": "balanced",
             "max_tier": 2,
-            "format_style": "auto",
         }
         with (
             patch("click.confirm", return_value=True),
-            patch("click.prompt", side_effect=["balanced", 2, "auto"]),
+            patch("click.prompt", side_effect=["balanced", 2]),
             patch("click.echo"),
         ):
             result, accepted = _prompt_optional_settings(defaults)
@@ -593,7 +590,6 @@ class TestRunInteractiveSetup:
                     "gpt-4o",
                     "detailed",
                     1,
-                    "xml",
                     "http://localhost:11434",
                     "llama3:8b",
                 ],
@@ -632,7 +628,6 @@ class TestRunInteractiveSetup:
                     "claude-haiku-4-5-20251001",
                     "minimal",
                     0,
-                    "auto",
                 ],
             ),
             patch("click.confirm", return_value=True),

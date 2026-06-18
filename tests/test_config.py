@@ -74,7 +74,6 @@ def test_default_config_new_schema(config_file: Path) -> None:
     """Defaults use new schema structure."""
     config = load_config(config_path=config_file)
     assert config["provider"]["default"] == "claude"
-    assert config["provider"]["format_style"] == "auto"
     # Auto-downgraded: no API keys → capped at 1 (local_llm enabled)
     assert config["enhancement"]["max_tier"] == 1
     assert config["enhancement"]["default_mode"] == "balanced"
@@ -315,17 +314,6 @@ def test_validate_mode_name(config_file: Path) -> None:
 default_mode = "ultra_mega"
 """)
     with pytest.raises(ConfigError, match="[Mm]ode"):
-        load_config(config_path=config_file, validate_keys=True)
-
-
-def test_validate_format_style(config_file: Path) -> None:
-    """Invalid format_style raises ConfigError."""
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    config_file.write_text("""\
-[provider]
-format_style = "invalid"
-""")
-    with pytest.raises(ConfigError, match="format"):
         load_config(config_path=config_file, validate_keys=True)
 
 

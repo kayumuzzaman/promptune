@@ -67,7 +67,10 @@ def run_gate(prompt: str, config: dict[str, Any]) -> int:
     # pollute stdout on failure, so the user's prompt proceeds unaltered even
     # if enhancement raises (network error, malformed config, etc.).
     try:
-        result = enhance(prompt, config)
+        # record=False: the gate has no accept/reject surface, so recording
+        # every auto-enhanced prompt as a confirmed "accept" would pollute
+        # dedup and preference learning with unconfirmed outcomes.
+        result = enhance(prompt, config, record=False)
     except Exception as exc:  # noqa: BLE001 — hook must never crash
         print(f"promptune: enhancement skipped ({exc})", file=sys.stderr)
         return 0

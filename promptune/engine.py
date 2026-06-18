@@ -63,7 +63,7 @@ class EnhanceResult:
     rules_applied: list[str]
     rules_explained: list[tuple[str, str]]
     context: Any  # ContextFingerprint | None — added in Task 6
-    format_style: str
+    format_style: str  # vestigial; always "auto" (provider formatting removed)
     provider: str | None  # null for Tier 0
     model: str | None  # null for Tier 0
     # Row id of the history record written for this enhancement, so an
@@ -219,8 +219,15 @@ def enhance(
     config: dict[str, Any],
     provider_override: str | None = None,
     tier_override: int | None = None,
+    record: bool = True,
 ) -> EnhanceResult:
-    """Enhance a prompt using tier-based routing."""
+    """Enhance a prompt using tier-based routing.
+
+    When *record* is False the enhancement is not written to history. The
+    auto-enhance gate uses this: it has no accept/reject surface, so recording
+    every gated prompt as a confirmed "accept" would pollute dedup and
+    preference learning with outcomes the user never confirmed.
+    """
     start = time.perf_counter()
 
     cfg = copy.deepcopy(config)
@@ -272,7 +279,6 @@ def enhance(
                         store=_store,
                         threshold=dedup_cfg.get("dedup_threshold", 0.85),
                         window=dedup_cfg.get("dedup_window", 50),
-                        format_style=cfg["provider"]["format_style"],
                     )
                     if hit is not None:
                         latency_ms = (time.perf_counter() - start) * 1000
@@ -288,7 +294,7 @@ def enhance(
                             rules_applied=[],
                             rules_explained=[],
                             context=None,
-                            format_style=cfg["provider"]["format_style"],
+                            format_style="auto",
                             provider=None,
                             model=None,
                         )
@@ -467,14 +473,14 @@ def enhance(
     # was always wired, the write side never was. Best-effort: a history failure
     # must never break enhancement.
     history_id: int | None = None
-    if history_enabled:
+    if history_enabled and record:
         history_id = _record_enhancement(
             history_cfg,
             original=prompt,
             enhanced=enhanced,
             tier_used=tier_used,
             provider=provider_name,
-            format_style=cfg["provider"]["format_style"],
+            format_style="auto",
             model=model_name,
             score_before=round(score_before.total),
             score_after=round(score_after.total),
@@ -493,7 +499,7 @@ def enhance(
         rules_applied=tier0_result.rules_applied,
         rules_explained=tier0_result.rules_explained,
         context=context_fp,
-        format_style=cfg["provider"]["format_style"],
+        format_style="auto",
         provider=provider_name,
         model=model_name,
         history_id=history_id,

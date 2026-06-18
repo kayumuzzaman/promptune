@@ -235,6 +235,21 @@ class TestRunGateInjects:
             in payload["hookSpecificOutput"]["additionalContext"]
         )
 
+    def test_enhance_called_with_record_false(self, capsys) -> None:
+        """The gate must not record history (no accept/reject surface)."""
+        with (
+            patch(
+                "promptune.gate.score_prompt",
+                return_value=_make_score(30),
+            ),
+            patch(
+                "promptune.gate.enhance",
+                return_value=self._mock_result(),
+            ) as mock_enhance,
+        ):
+            run_gate("make a simple todo app thing", _BASE_CONFIG)
+        assert mock_enhance.call_args.kwargs.get("record") is False
+
     def test_stdout_is_only_json(self, capsys) -> None:
         with (
             patch(

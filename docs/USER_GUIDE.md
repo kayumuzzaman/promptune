@@ -113,9 +113,6 @@ promptune enhance -s detailed "build a payment system"
 # Force a specific tier (0=rules only, 1=local LLM, 2=cloud API)
 promptune enhance --tier 0 "fix the login bug"
 
-# Force output format style
-promptune enhance --format markdown "explain kubernetes networking"
-
 # Skip the TUI, print directly to stdout
 promptune enhance --no-tui "add dark mode to my react app"
 
@@ -129,7 +126,7 @@ echo "build a REST API" | promptune enhance --no-tui
 promptune enhance --no-tui "your prompt" | pbcopy
 
 # Combine multiple flags
-promptune enhance -p openrouter -s detailed --format xml --no-tui "design a caching layer"
+promptune enhance -p openrouter -s detailed --no-tui "design a caching layer"
 ```
 
 **Flags:**
@@ -139,7 +136,6 @@ promptune enhance -p openrouter -s detailed --format xml --no-tui "design a cach
 | `--provider` | `-p` | Override default provider (claude, openai, openrouter) |
 | `--style` | `-s` | Override default style (minimal, balanced, detailed) |
 | `--tier` | | Force specific tier: 0 (rules only), 1 (local LLM), 2 (cloud API) |
-| `--format` | | Force output format: xml, markdown, plain |
 | `--no-tui` | | Print result directly, skip interactive TUI |
 | `--json` | | Output structured JSON with scores, tier, latency |
 
@@ -525,7 +521,6 @@ Run `promptune config init` for the interactive setup wizard, or edit the file d
 ```toml
 [provider]
 default = "claude"                        # claude | openai | openrouter
-format_style = "auto"                     # auto | xml | markdown | plain
 model_claude = "claude-haiku-4-5-20251001"
 model_openai = "gpt-4o-mini"
 model_openrouter = "anthropic/claude-haiku-4.5"

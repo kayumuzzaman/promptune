@@ -223,6 +223,23 @@ def test_engine_dedup_bypassed_on_explicit_override(
     )
 
 
+def test_engine_record_false_skips_history(
+    mock_config: dict, tmp_path
+) -> None:
+    """enhance(record=False) (used by the gate) writes nothing to history."""
+    from promptune.history import HistoryStore
+
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["enhancement"]["max_tier"] = 0
+
+    result = enhance("fix the bug", mock_config, record=False)
+
+    assert result.history_id is None
+    with HistoryStore(db_path=db) as store:
+        assert store.recent(n=10) == []
+
+
 def test_engine_no_record_when_history_disabled(
     mock_config: dict, tmp_path
 ) -> None:

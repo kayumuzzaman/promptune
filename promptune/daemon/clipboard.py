@@ -182,9 +182,18 @@ def paste_result(text: str, settle_ms: int = CLIPBOARD_SETTLE_MS) -> bool:
     """Write *text* to the clipboard and then trigger a paste.
 
     Writes the text, waits *settle_ms* for the clipboard to settle, then
-    simulates Cmd+V. Returns ``True`` once the keystroke has been dispatched.
+    simulates Cmd+V. Returns ``True`` if the paste keystroke was dispatched, or
+    ``False`` if accessibility permission is missing — in which case the
+    synthetic Cmd+V is silently dropped by the OS, so we report failure (the
+    text is on the clipboard) instead of letting the daemon clobber it with the
+    user's original after a no-op paste. Mirrors the X11/Wayland backends, which
+    return False when the paste tool fails.
     """
+    from promptune.daemon.hotkey import check_accessibility
+
     write_clipboard(text)
+    if not check_accessibility():
+        return False
     time.sleep(settle_ms / 1000.0)
     simulate_cmd_v()
     return True

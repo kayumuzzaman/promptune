@@ -375,3 +375,40 @@ class TestUndoBuffer:
             clipboard.save_undo("clip", "sel")
 
         assert undo_file.exists()
+
+
+class TestPasteResult:
+    def test_returns_false_without_accessibility(self) -> None:
+        """No accessibility trust → Cmd+V is dropped by the OS, so report
+        failure instead of letting the daemon clobber the clipboard."""
+        with (
+            patch("promptune.daemon.clipboard.write_clipboard") as mock_write,
+            patch(
+                "promptune.daemon.hotkey.check_accessibility",
+                return_value=False,
+            ),
+            patch(
+                "promptune.daemon.clipboard.simulate_cmd_v"
+            ) as mock_paste,
+        ):
+            result = clipboard.paste_result("enhanced text")
+
+        assert result is False
+        mock_write.assert_called_once_with("enhanced text")
+        mock_paste.assert_not_called()  # keystroke must not be dispatched
+
+    def test_returns_true_when_trusted(self) -> None:
+        """With accessibility trust the paste keystroke is dispatched."""
+        with (
+            patch("promptune.daemon.clipboard.write_clipboard"),
+            patch(
+                "promptune.daemon.hotkey.check_accessibility",
+                return_value=True,
+            ),
+            patch("promptune.daemon.clipboard.simulate_cmd_v") as mock_paste,
+            patch("promptune.daemon.clipboard.time.sleep"),
+        ):
+            result = clipboard.paste_result("enhanced text")
+
+        assert result is True
+        mock_paste.assert_called_once()

@@ -20,12 +20,9 @@ class ConfigError(Exception):
 
 VALID_PROVIDERS = {"claude", "openai", "openrouter"}
 VALID_MODES = {"minimal", "balanced", "detailed"}
-VALID_FORMAT_STYLES = {"auto", "xml", "markdown", "plain"}
-
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider": {
         "default": "claude",
-        "format_style": "auto",
         "model_claude": "claude-haiku-4-5-20251001",
         "model_openai": "gpt-4o-mini",
         "model_openrouter": "anthropic/claude-haiku-4.5",
@@ -132,8 +129,6 @@ def _apply_cli_overrides(
                 f"Invalid --tier value {cli_overrides['tier']!r}: "
                 "must be an integer."
             ) from exc
-    if "format" in cli_overrides:
-        config["provider"]["format_style"] = cli_overrides["format"]
     return config
 
 
@@ -231,13 +226,6 @@ def _validate(config: dict[str, Any]) -> None:
         raise ConfigError(
             f"Invalid mode '{mode}'. "
             f"Must be one of: {', '.join(sorted(VALID_MODES))}"
-        )
-
-    format_style = config["provider"]["format_style"]
-    if format_style not in VALID_FORMAT_STYLES:
-        raise ConfigError(
-            f"Invalid format_style '{format_style}'. "
-            f"Must be one of: {', '.join(sorted(VALID_FORMAT_STYLES))}"
         )
 
     max_tier = config["enhancement"]["max_tier"]
