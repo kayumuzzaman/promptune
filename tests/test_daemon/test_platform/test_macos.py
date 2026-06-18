@@ -178,6 +178,47 @@ class TestMacOSService:
             svc.purge()
             mock_uninstall.assert_called_once()
 
+    def test_purge_removes_all_daemon_files(self, tmp_path) -> None:
+        """purge() must delete socket/PID/undo/log per the ServiceBackend
+        contract — not just uninstall the login item."""
+        from promptune.daemon import daemon as daemon_mod
+
+        files = {
+            "SOCKET_PATH": tmp_path / "promptune.sock",
+            "PID_FILE": tmp_path / "daemon.pid",
+            "UNDO_FILE": tmp_path / "undo.txt",
+            "LOG_FILE": tmp_path / "daemon.log",
+        }
+        for f in files.values():
+            f.write_text("stale", encoding="utf-8")
+
+        svc = MacOSService()
+        with (
+            patch(f"{_LA}.uninstall_login_item"),
+            patch.object(daemon_mod, "SOCKET_PATH", files["SOCKET_PATH"]),
+            patch.object(daemon_mod, "PID_FILE", files["PID_FILE"]),
+            patch.object(daemon_mod, "UNDO_FILE", files["UNDO_FILE"]),
+            patch.object(daemon_mod, "LOG_FILE", files["LOG_FILE"]),
+        ):
+            svc.purge()
+
+        for f in files.values():
+            assert not f.exists()
+
+    def test_purge_tolerates_missing_files(self, tmp_path) -> None:
+        """purge() must not raise when daemon files are already absent."""
+        from promptune.daemon import daemon as daemon_mod
+
+        svc = MacOSService()
+        with (
+            patch(f"{_LA}.uninstall_login_item"),
+            patch.object(daemon_mod, "SOCKET_PATH", tmp_path / "nope.sock"),
+            patch.object(daemon_mod, "PID_FILE", tmp_path / "nope.pid"),
+            patch.object(daemon_mod, "UNDO_FILE", tmp_path / "nope.txt"),
+            patch.object(daemon_mod, "LOG_FILE", tmp_path / "nope.log"),
+        ):
+            svc.purge()  # no exception
+
 
 class TestMacOSActiveWindow:
     def test_implements_interface(self) -> None:

@@ -24,7 +24,7 @@ from promptune.config import ConfigError
 from promptune.context import collect_context
 from promptune.context.ranker import rank_context
 from promptune.dedup import dedup_check
-from promptune.history import HistoryStore
+from promptune.history import HistoryEntry, HistoryStore
 from promptune.meta_prompt import (
     build_system_prompt,
     detect_domain,
@@ -151,6 +151,60 @@ def _try_tier2(
     model = config["provider"].get(model_key, "")
     enhanced = provider.enhance(prompt, system_prompt)
     return enhanced, provider_name, model
+
+
+def _record_enhancement(
+    history_cfg: dict[str, Any],
+    *,
+    original: str,
+    enhanced: str,
+    tier_used: int,
+    provider: str | None,
+    format_style: str | None,
+    model: str | None,
+    score_before: int,
+    score_after: int,
+    latency_ms: float,
+    rules_applied: list[str],
+    project_root: str | None,
+) -> None:
+    """Persist a completed enhancement to the history store (best-effort).
+
+    The interactive accept/edit/reject decision isn't known at engine level, so
+    completed enhancements are recorded as ``"accept"``. A failure here is logged
+    and swallowed — recording must never break the enhancement path.
+    """
+    try:
+        with HistoryStore(
+            db_path=Path(
+                history_cfg.get(
+                    "db_path", "~/.local/share/promptune/history.db"
+                )
+            ).expanduser(),
+            max_entries=history_cfg.get("max_entries", 10000),
+        ) as store:
+            store.record(
+                HistoryEntry(
+                    original=original,
+                    enhanced=enhanced,
+                    decision="accept",
+                    edit_result=None,
+                    tier_used=tier_used,
+                    provider=provider,
+                    format_style=format_style,
+                    model=model,
+                    score_before=score_before,
+                    score_after=score_after,
+                    latency_ms=latency_ms,
+                    rules_applied=rules_applied,
+                    context_json=None,
+                    project_root=project_root,
+                )
+            )
+    except Exception:
+        _log.warning(
+            "Failed to record enhancement to history", exc_info=True
+        )
 
 
 def enhance(
@@ -391,6 +445,26 @@ def enhance(
         score_after = score_prompt(enhanced)
 
     latency_ms = (time.perf_counter() - start) * 1000
+
+    # Persist to history. This write side is what powers dedup, the
+    # `history`/`preferences` commands, and preference learning — the read side
+    # was always wired, the write side never was. Best-effort: a history failure
+    # must never break enhancement.
+    if history_enabled:
+        _record_enhancement(
+            history_cfg,
+            original=prompt,
+            enhanced=enhanced,
+            tier_used=tier_used,
+            provider=provider_name,
+            format_style=cfg["provider"]["format_style"],
+            model=model_name,
+            score_before=round(score_before.total),
+            score_after=round(score_after.total),
+            latency_ms=latency_ms,
+            rules_applied=tier0_result.rules_applied,
+            project_root=project_root,
+        )
 
     return EnhanceResult(
         original=prompt,

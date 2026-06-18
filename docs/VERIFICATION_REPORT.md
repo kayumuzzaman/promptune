@@ -9,11 +9,11 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-17 |
-| Branch | fix/validation-round2 |
+| Date | 2026-06-18 |
+| Branch | fix/validation-round3 |
 | Python | 3.14.3 |
-| Total Tests | 1113 |
-| Test Result | **1107 passed, 6 skipped, 0 failed** |
+| Total Tests | 1120 |
+| Test Result | **1114 passed, 6 skipped, 0 failed** |
 | Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
@@ -114,6 +114,31 @@
 ---
 
 ## Known Issues
+
+### -2. Multi-agent audit round 3 (2026-06-18) — 3 findings [RESOLVED]
+Third parallel sub-agent pass. CLI/config domain came back clean; daemon and
+core surfaced 3 defects, all fixed with regression tests + test isolation:
+
+- **CRITICAL** `engine.py` / `cli.py` — `HistoryStore.record()` was never called
+  in production, so the history table was always empty. That silently disabled
+  three documented, default-on features: semantic **dedup** (queried an empty
+  table), **preference learning**, and the `history`/`preferences` CLI commands.
+  The engine read side was wired; the write side never was. Fixed by recording
+  each completed enhancement in `engine.enhance()` (decision defaults to
+  `accept`; best-effort — a history failure never breaks enhancement). Added an
+  autouse `tests/conftest.py` `_isolate_home` fixture redirecting `$HOME` to a
+  temp dir so the suite no longer reads/writes the real user DB and dedup cache
+  hits can't leak across tests (this also fixed pre-existing real-home pollution).
+- **HIGH** `daemon/platform/macos.py` — `MacOSService.purge()` only removed the
+  login item, leaving the socket / PID / undo / log files behind, violating the
+  `ServiceBackend.purge()` contract and the CLI's own "remove all daemon files"
+  promise. Now deletes all four (lazy import to avoid a cycle), mirroring
+  `LinuxService.purge()`.
+- **MEDIUM** `daemon/notify.py` — `notify()` ran `osascript` via subprocess that
+  could raise `TimeoutExpired`/`OSError`; callers invoke it inside the
+  clipboard-delivery `try/except`, so a notification failure after a *successful*
+  paste was misreported to the user as a paste failure. `notify()` now swallows
+  subprocess errors (best-effort feedback never raises).
 
 ### -1. Multi-agent audit round 2 (2026-06-17) — 2 findings [RESOLVED]
 A second parallel sub-agent pass (after PR #14 merged) found 2 more latent
