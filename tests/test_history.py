@@ -272,3 +272,20 @@ def test_auto_prune_large_db(
 ) -> None:
     """DB has _maybe_prune method."""
     assert hasattr(store, "_maybe_prune")
+
+
+def test_set_decision_updates_decision(store: HistoryStore) -> None:
+    """set_decision corrects a row first written as accept (e.g. to reject)."""
+    row_id = store.record(_make_entry(decision="accept"))
+    store.set_decision(row_id, "reject", None)
+    entries = store.recent(n=10)
+    assert entries[0].decision == "reject"
+
+
+def test_set_decision_records_edit_result(store: HistoryStore) -> None:
+    """set_decision stores the edited text alongside an 'edit' decision."""
+    row_id = store.record(_make_entry(decision="accept"))
+    store.set_decision(row_id, "edit", "the user's edited prompt")
+    entries = store.recent(n=10)
+    assert entries[0].decision == "edit"
+    assert entries[0].edit_result == "the user's edited prompt"

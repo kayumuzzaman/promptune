@@ -88,9 +88,13 @@ def run_server() -> None:
         """
         tier_override = tier if tier >= 0 else None
         fmt = output_format if output_format != "auto" else None
+        # Pass the requested style through verbatim. Previously an explicit
+        # style="balanced" was collapsed to None — indistinguishable from "not
+        # set" — so a client asking for balanced silently got the configured
+        # default_mode instead. "balanced" is the tool's documented default.
         return _tool_enhance(
             prompt,
-            style=style if style != "balanced" else None,
+            style=style,
             tier=tier_override,
             format_style=fmt,
         )

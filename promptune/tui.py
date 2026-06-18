@@ -127,12 +127,18 @@ def display_enhancement(
 
 def _render_header(result: EnhanceResult) -> str:
     """Render the status header line."""
-    tier_label = f"Tier {result.tier_used}"
-    if result.tier_used == 0:
+    if result.tier_used == -1:
+        # Dedup cache hit — never touched a provider; don't mislabel as cloud.
+        tier_label = "Cached"
+        method = "history"
+    elif result.tier_used == 0:
+        tier_label = "Tier 0"
         method = "rules"
     elif result.tier_used == 1:
+        tier_label = "Tier 1"
         method = "local"
     else:
+        tier_label = f"Tier {result.tier_used}"
         method = result.provider or "cloud"
 
     latency = f"{result.latency_ms:.0f}ms"

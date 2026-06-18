@@ -195,6 +195,27 @@ class HistoryStore:
             row_id: int = cursor.lastrowid or 0
             return row_id
 
+    def set_decision(
+        self,
+        entry_id: int,
+        decision: str,
+        edit_result: str | None = None,
+    ) -> None:
+        """Update the decision (and optional edit_result) of an existing row.
+
+        Used to correct a row first written as ``accept`` once the user's real
+        accept/reject/edit choice is known (interactive TUI), so dedup and
+        preference learning act on the true outcome.
+        """
+        with self._lock:
+            self._conn.execute(
+                """UPDATE enhancements
+                   SET decision = ?, edit_result = ?
+                   WHERE id = ?""",
+                (decision, edit_result, entry_id),
+            )
+            self._conn.commit()
+
     def recent(
         self,
         n: int = 20,

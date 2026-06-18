@@ -178,6 +178,20 @@ def enhance_cmd(
         from promptune.tui import display_result
 
         final = display_result(result)
+
+        # The enhancement was recorded as "accept" by the engine before the user
+        # acted. Correct it to the real decision now so dedup never resurfaces a
+        # rejected result and preference learning sees true outcomes.
+        if result.history_id is not None:
+            if final is None:
+                _update_history_decision(
+                    cfg, result.history_id, "reject", None
+                )
+            elif final != result.enhanced:
+                _update_history_decision(
+                    cfg, result.history_id, "edit", final
+                )
+
         if final:
             click.echo(final)
         else:
@@ -821,6 +835,30 @@ def history_cmd(
             )
     finally:
         store.close()
+
+
+def _update_history_decision(
+    cfg: dict[str, Any],
+    entry_id: int,
+    decision: str,
+    edit_result: str | None,
+) -> None:
+    """Correct a recorded enhancement's decision (best-effort)."""
+    history_cfg = cfg.get("history", {})
+    if not history_cfg.get("enabled", True):
+        return
+    try:
+        with HistoryStore(
+            db_path=Path(
+                history_cfg.get(
+                    "db_path", "~/.local/share/promptune/history.db"
+                )
+            ).expanduser(),
+            max_entries=history_cfg.get("max_entries", 10000),
+        ) as store:
+            store.set_decision(entry_id, decision, edit_result)
+    except Exception:
+        pass
 
 
 def _get_history_store() -> HistoryStore | None:

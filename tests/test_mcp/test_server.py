@@ -316,9 +316,53 @@ class TestRunServer:
                 "prompt", style="balanced", tier=-1, output_format="auto"
             )
 
-        # style="balanced" → None, tier=-1 → None, format=auto → None
+        # tier=-1 → None, format=auto → None; style passes through verbatim
+        # (an explicit "balanced" must not be collapsed to None/config default).
         mock_enhance.assert_called_once_with(
-            "prompt", style=None, tier=None, format_style=None
+            "prompt", style="balanced", tier=None, format_style=None
+        )
+
+    def test_registered_enhance_tool_passes_style_through(
+        self,
+    ) -> None:
+        """An explicit style must reach _tool_enhance unchanged."""
+        from promptune.mcp import server as mcp_server
+
+        registered: dict[str, Any] = {}
+
+        def fake_tool_decorator() -> Any:
+            def wrapper(fn: Any) -> Any:
+                registered[fn.__name__] = fn
+                return fn
+
+            return wrapper
+
+        mock_fastmcp_class = MagicMock()
+        mock_fastmcp_instance = MagicMock()
+        mock_fastmcp_class.return_value = mock_fastmcp_instance
+        mock_fastmcp_instance.tool.side_effect = fake_tool_decorator
+
+        fake_module = MagicMock()
+        fake_module.FastMCP = mock_fastmcp_class
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mcp": MagicMock(),
+                "mcp.server": MagicMock(),
+                "mcp.server.fastmcp": fake_module,
+            },
+        ), patch(
+            "promptune.mcp.server._tool_enhance",
+            return_value={},
+        ) as mock_enhance:
+            mcp_server.run_server()
+            registered["enhance_prompt"](
+                "prompt", style="detailed", tier=2, output_format="xml"
+            )
+
+        mock_enhance.assert_called_once_with(
+            "prompt", style="detailed", tier=2, format_style="xml"
         )
 
     def test_registered_score_tool_delegates_to_tool_score(

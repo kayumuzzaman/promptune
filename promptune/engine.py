@@ -66,6 +66,10 @@ class EnhanceResult:
     format_style: str
     provider: str | None  # null for Tier 0
     model: str | None  # null for Tier 0
+    # Row id of the history record written for this enhancement, so an
+    # interactive caller can correct the decision (reject/edit) after the user
+    # acts. None when nothing was recorded (history disabled or a dedup hit).
+    history_id: int | None = None
 
 
 def _detect_project_root() -> str:
@@ -167,12 +171,14 @@ def _record_enhancement(
     latency_ms: float,
     rules_applied: list[str],
     project_root: str | None,
-) -> None:
+) -> int | None:
     """Persist a completed enhancement to the history store (best-effort).
 
-    The interactive accept/edit/reject decision isn't known at engine level, so
-    completed enhancements are recorded as ``"accept"``. A failure here is logged
-    and swallowed — recording must never break the enhancement path.
+    Returns the new row id (so an interactive caller can later correct the
+    decision via ``HistoryStore.set_decision``) or ``None`` on failure. The
+    enhancement is recorded as ``"accept"`` — the true interactive decision isn't
+    known at engine level and is corrected post-hoc by the CLI. A failure here is
+    logged and swallowed — recording must never break the enhancement path.
     """
     try:
         with HistoryStore(
@@ -183,7 +189,7 @@ def _record_enhancement(
             ).expanduser(),
             max_entries=history_cfg.get("max_entries", 10000),
         ) as store:
-            store.record(
+            return store.record(
                 HistoryEntry(
                     original=original,
                     enhanced=enhanced,
@@ -205,6 +211,7 @@ def _record_enhancement(
         _log.warning(
             "Failed to record enhancement to history", exc_info=True
         )
+        return None
 
 
 def enhance(
@@ -249,14 +256,23 @@ def enhance(
                 ).expanduser(),
                 max_entries=history_cfg.get("max_entries", 10000),
             ) as _store:
-                # Dedup check — early exit if similar prompt was recently enhanced
-                if dedup_cfg.get("dedup_enabled", True):
+                # Dedup check — early exit if similar prompt was recently
+                # enhanced under the same effective options. Explicit per-call
+                # overrides (--tier / --provider) must be honoured with a fresh
+                # run, never served a generic cached result, and a cached hit is
+                # only reused when its format matches the current request.
+                if (
+                    dedup_cfg.get("dedup_enabled", True)
+                    and tier_override is None
+                    and provider_override is None
+                ):
                     hit = dedup_check(
                         prompt=prompt,
                         project_root=project_root,
                         store=_store,
                         threshold=dedup_cfg.get("dedup_threshold", 0.85),
                         window=dedup_cfg.get("dedup_window", 50),
+                        format_style=cfg["provider"]["format_style"],
                     )
                     if hit is not None:
                         latency_ms = (time.perf_counter() - start) * 1000
@@ -450,8 +466,9 @@ def enhance(
     # `history`/`preferences` commands, and preference learning — the read side
     # was always wired, the write side never was. Best-effort: a history failure
     # must never break enhancement.
+    history_id: int | None = None
     if history_enabled:
-        _record_enhancement(
+        history_id = _record_enhancement(
             history_cfg,
             original=prompt,
             enhanced=enhanced,
@@ -479,4 +496,5 @@ def enhance(
         format_style=cfg["provider"]["format_style"],
         provider=provider_name,
         model=model_name,
+        history_id=history_id,
     )

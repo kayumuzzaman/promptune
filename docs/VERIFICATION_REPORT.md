@@ -10,10 +10,10 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-18 |
-| Branch | fix/validation-round3 |
+| Branch | fix/validation-round4 |
 | Python | 3.14.3 |
-| Total Tests | 1120 |
-| Test Result | **1114 passed, 6 skipped, 0 failed** |
+| Total Tests | 1130 |
+| Test Result | **1124 passed, 6 skipped, 0 failed** |
 | Coverage | **97%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 46 source files |
@@ -114,6 +114,42 @@
 ---
 
 ## Known Issues
+
+### -3. Audit round 4 + Codex PR-bot review (2026-06-18) — 6 findings [RESOLVED]
+Fourth sub-agent pass plus 2 P2 comments the Codex GitHub bot left on PR #16.
+Most findings were consequences of the round-3 history-recording change:
+
+- **Codex P2 / HIGH** `engine.py` + `cli.py` — recording hardcoded `decision=
+  "accept"` *before* the interactive user acted, so rejected/edited prompts were
+  stored as accepted and could be resurfaced by dedup. The engine now records
+  `accept` and returns the row id on `EnhanceResult.history_id`; the CLI corrects
+  it to the real `reject`/`edit` (with edit text) after `display_result()` via
+  the new `HistoryStore.set_decision()`. This also makes preference learning see
+  real decisions (resolves the round-4 "always-accept inert" finding).
+- **Codex P2 / HIGH** `engine.py` + `dedup.py` — dedup matched prompt+project
+  only, ignoring effective options, so a later same-prompt run with `--tier 0` /
+  a different provider / format was served the stale cached result. Now dedup is
+  bypassed when explicit `tier`/`provider` overrides are present, and a cached
+  hit is only reused when its `format_style` matches the request.
+- **HIGH** `preferences.py` — `analyse_rule_preferences`/`analyse_edit_patterns`
+  scanned `recent(n=10000)` (full table) on every `enhance()` including the hot
+  gate path; was free when the table was empty, real cost once recording was
+  wired. Bounded to a `_PREF_WINDOW = 500` recent-window.
+- **HIGH** `daemon/clipboard.py` — `get_frontmost_app()` had no exception guard
+  (only None checks), unlike the X11/Wayland backends; a transient PyObjC failure
+  crashed the per-press hotkey thread with no user feedback. Now degrades to "".
+- **HIGH** `tui.py` — `_render_header` had no `tier_used == -1` branch, rendering
+  a dedup cache hit as a misleading "Tier -1 · cloud". Now shows "Cached · history".
+- **HIGH** `mcp/server.py` — `enhance_prompt` collapsed an explicit `style=
+  "balanced"` to `None`, indistinguishable from "unset", so a client asking for
+  balanced silently got the configured `default_mode`. Style now passes through.
+
+Accepted minor (documented, not fixed): `enhance()` opens a second short-lived
+sqlite connection for the record write rather than reusing the read-phase store.
+The dominant load cost (the full-table preference scan) is fixed above; a local
+sqlite open is sub-millisecond and not worth re-indenting the core routing
+function. The `--format-style` CLI flag on `enhance` is also currently a no-op
+(never applied to cfg) — pre-existing, tracked separately.
 
 ### -2. Multi-agent audit round 3 (2026-06-18) — 3 findings [RESOLVED]
 Third parallel sub-agent pass. CLI/config domain came back clean; daemon and

@@ -251,6 +251,16 @@ def test_tui_header_shows_provider_for_tier2() -> None:
     assert "claude" in header.lower()
 
 
+def test_tui_header_shows_cached_for_dedup_hit() -> None:
+    """A dedup cache hit (tier_used=-1) reads as 'Cached', not 'Tier -1 · cloud'."""
+    result = _make_enhance_result(tier_used=-1)
+    result.provider = None
+    header = _render_header(result)
+    assert "Cached" in header
+    assert "Tier -1" not in header
+    assert "cloud" not in header.lower()
+
+
 def test_tui_panels_do_not_crash_on_markup_brackets() -> None:
     """User text with [..] must not be parsed as Rich markup (no crash)."""
     import dataclasses

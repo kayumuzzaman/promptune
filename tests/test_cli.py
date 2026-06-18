@@ -2022,3 +2022,38 @@ def test_malformed_config_shows_clean_error_not_traceback(tmp_path) -> None:
     assert result.exception is None or isinstance(
         result.exception, SystemExit
     )
+
+
+def test_enhance_reject_records_reject_decision(mocker) -> None:
+    """Rejecting in the TUI corrects the history record to 'reject' so dedup
+    never resurfaces a declined enhancement (Codex review on PR #16)."""
+    spy = mocker.patch("promptune.cli._update_history_decision")
+    mocker.patch("promptune.tui.display_result", return_value=None)
+
+    result = CliRunner().invoke(
+        main, ["enhance", "fix the bug in the parser module"]
+    )
+
+    assert result.exit_code == 1  # reject exits non-zero
+    assert spy.called
+    _cfg, _id, decision, edit_result = spy.call_args[0]
+    assert decision == "reject"
+    assert edit_result is None
+
+
+def test_enhance_edit_records_edit_decision(mocker) -> None:
+    """Editing in the TUI records the edited text under an 'edit' decision."""
+    spy = mocker.patch("promptune.cli._update_history_decision")
+    mocker.patch(
+        "promptune.tui.display_result", return_value="my edited version"
+    )
+
+    result = CliRunner().invoke(
+        main, ["enhance", "fix the bug in the parser module"]
+    )
+
+    assert result.exit_code == 0
+    assert spy.called
+    _cfg, _id, decision, edit_result = spy.call_args[0]
+    assert decision == "edit"
+    assert edit_result == "my edited version"
