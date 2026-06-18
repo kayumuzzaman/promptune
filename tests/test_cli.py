@@ -2057,3 +2057,20 @@ def test_enhance_edit_records_edit_decision(mocker) -> None:
     _cfg, _id, decision, edit_result = spy.call_args[0]
     assert decision == "edit"
     assert edit_result == "my edited version"
+
+
+def test_enhance_accept_leaves_decision_untouched(mocker) -> None:
+    """Accepting leaves the 'accept' record as-is — no decision correction."""
+    spy = mocker.patch("promptune.cli._update_history_decision")
+    # display_result returning the unchanged enhanced text == ACCEPT.
+    mocker.patch(
+        "promptune.tui.display_result",
+        side_effect=lambda result: result.enhanced,
+    )
+
+    out = CliRunner().invoke(
+        main, ["enhance", "fix the bug in the parser module"]
+    )
+
+    assert out.exit_code == 0
+    spy.assert_not_called()
