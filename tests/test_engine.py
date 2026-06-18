@@ -183,6 +183,46 @@ def test_engine_records_to_history(mock_config: dict, tmp_path) -> None:
     assert entries[0].tier_used == 0
 
 
+def test_engine_result_exposes_history_id(
+    mock_config: dict, tmp_path
+) -> None:
+    """A recorded enhancement exposes its row id; a dedup hit does not."""
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["enhancement"]["max_tier"] = 0
+
+    result = enhance("fix the bug", mock_config)
+    assert result.history_id is not None
+
+    # Same prompt again → served from dedup cache, nothing newly recorded.
+    hit = enhance("fix the bug", mock_config)
+    assert hit.tier_used == -1
+    assert hit.history_id is None
+
+
+def test_engine_dedup_bypassed_on_explicit_override(
+    mock_config: dict, tmp_path
+) -> None:
+    """An explicit --tier/--provider override must run fresh, not serve the
+    generic cached result (Codex review on PR #16)."""
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["enhancement"]["max_tier"] = 0
+    prompt = "fix the auth bug in the parser module"
+
+    enhance(prompt, mock_config)  # seeds a cacheable entry
+
+    # No override → dedup hit.
+    assert enhance(prompt, mock_config).tier_used == -1
+    # Explicit tier override → bypass dedup, real run.
+    assert enhance(prompt, mock_config, tier_override=0).tier_used == 0
+    # Explicit provider override → also bypass dedup.
+    assert (
+        enhance(prompt, mock_config, provider_override="claude").tier_used
+        != -1
+    )
+
+
 def test_engine_no_record_when_history_disabled(
     mock_config: dict, tmp_path
 ) -> None:

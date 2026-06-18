@@ -64,11 +64,16 @@ def dedup_check(
     store: HistoryStore,
     threshold: float = 0.85,
     window: int = 50,
+    format_style: str | None = None,
 ) -> DedupHit | None:
     """Check if a similar prompt was recently enhanced.
 
     Returns DedupHit if a match is found above threshold,
     None otherwise. Skips prompts shorter than 3 words.
+
+    When *format_style* is given, only entries produced with the same format are
+    considered — a cached result in another format wouldn't honour the current
+    request. Pass ``None`` to match regardless of format.
     """
     tokens = tokenize(prompt)
     if len(tokens) < 3:
@@ -83,6 +88,8 @@ def dedup_check(
 
     for entry in entries:
         if entry.decision == "reject":
+            continue
+        if format_style is not None and entry.format_style != format_style:
             continue
 
         sim = cosine_similarity(prompt, entry.original)

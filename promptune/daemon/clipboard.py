@@ -108,16 +108,22 @@ def simulate_cmd_v() -> None:
 def get_frontmost_app() -> str:
     """Return the bundle identifier of the currently frontmost application.
 
-    Returns an empty string if the bundle ID cannot be determined.
+    Returns an empty string if the bundle ID cannot be determined. PyObjC can
+    raise transiently during an app switch (stale NSRunningApplication), so any
+    failure degrades to "" — matching the X11/Wayland backends — rather than
+    crashing the hotkey thread and silently no-opping the enhancement.
     """
-    workspace = NSWorkspace.sharedWorkspace()
-    app = workspace.frontmostApplication()
-    if app is None:
+    try:
+        workspace = NSWorkspace.sharedWorkspace()
+        app = workspace.frontmostApplication()
+        if app is None:
+            return ""
+        bundle_id = app.bundleIdentifier()
+        if bundle_id is None:
+            return ""
+        return str(bundle_id)
+    except Exception:
         return ""
-    bundle_id = app.bundleIdentifier()
-    if bundle_id is None:
-        return ""
-    return str(bundle_id)
 
 
 # ---------------------------------------------------------------------------

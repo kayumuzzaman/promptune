@@ -111,6 +111,36 @@ class TestDedupCheck:
         assert isinstance(result, DedupHit)
         assert result.enhanced == "Diagnose and fix the authentication bug"
 
+    def test_format_style_filter_excludes_mismatch(
+        self, store: HistoryStore
+    ) -> None:
+        """A cached result in another format must not be reused."""
+        store.record(_make_entry(  # recorded with format_style="xml"
+            original="fix the auth bug",
+            enhanced="Diagnose and fix the authentication bug",
+        ))
+
+        # Requesting markdown must NOT reuse the xml-format cached entry.
+        miss = dedup_check(
+            prompt="fix the auth bug",
+            project_root="/home/user/project",
+            store=store,
+            threshold=0.85,
+            format_style="markdown",
+        )
+        assert miss is None
+
+        # Same format reuses it; None means "any format" and also reuses.
+        for fmt in ("xml", None):
+            hit = dedup_check(
+                prompt="fix the auth bug",
+                project_root="/home/user/project",
+                store=store,
+                threshold=0.85,
+                format_style=fmt,
+            )
+            assert hit is not None
+
     def test_miss_returns_none(self, store: HistoryStore) -> None:
         store.record(_make_entry(
             original="fix the auth bug",

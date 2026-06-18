@@ -39,13 +39,21 @@ _FORMAT_SUFFIXES = re.compile(
 )
 
 
+# Bounded scan window. enhance() runs preference analysis on every call
+# (including the hot gate/auto-enhance path), so scanning the whole table — up
+# to max_entries (10000) — would add unbounded latency as history grows. A
+# recent window keeps the cost flat while still giving enough samples.
+_PREF_WINDOW = 500
+
+
 def analyse_rule_preferences(
     store: HistoryStore,
     min_samples: int = 5,
     project: str | None = None,
+    window: int = _PREF_WINDOW,
 ) -> list[Preference]:
-    """Analyse history to learn rule accept/reject patterns."""
-    entries = store.recent(n=10000, project=project)
+    """Analyse recent history to learn rule accept/reject patterns."""
+    entries = store.recent(n=window, project=project)
 
     rule_stats: dict[str, dict[str, int]] = defaultdict(
         lambda: {"accept": 0, "reject": 0}
@@ -91,9 +99,10 @@ def analyse_edit_patterns(
     store: HistoryStore,
     min_samples: int = 5,
     project: str | None = None,
+    window: int = _PREF_WINDOW,
 ) -> list[EditPattern]:
-    """Analyse edit history to find repeated removal patterns."""
-    entries = store.recent(n=10000, project=project)
+    """Analyse recent edit history to find repeated removal patterns."""
+    entries = store.recent(n=window, project=project)
 
     edits = [
         e for e in entries

@@ -185,6 +185,17 @@ class TestGetFrontmostApp:
 
         assert result == ""
 
+    def test_returns_empty_string_on_pyobjc_exception(self) -> None:
+        """A transient PyObjC failure degrades to '' instead of crashing the
+        hotkey thread (matches the X11/Wayland backends)."""
+        mock_workspace = MagicMock()
+        mock_workspace.sharedWorkspace.side_effect = RuntimeError("PyObjC boom")
+
+        with patch("promptune.daemon.clipboard.NSWorkspace", mock_workspace):
+            result = clipboard.get_frontmost_app()
+
+        assert result == ""
+
     def test_returns_empty_string_if_bundle_id_none(self) -> None:
         """get_frontmost_app returns '' when bundleIdentifier() returns None."""
         mock_app = MagicMock()
