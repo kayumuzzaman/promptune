@@ -107,27 +107,58 @@ def _process_command(pid: int) -> str | None:
             timeout=2,
             check=False,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
         return None
     return result.stdout.strip()
 
 
+def _process_name(pid: int) -> str | None:
+    """Return the executable basename for *pid*, if it can be verified."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    name = result.stdout.strip()
+    return os.path.basename(name) if name else None
+
+
 # Matches the daemon launch forms in `ps -o command=` output. `ps` space-joins
 # argv with no quoting, so an interpreter/script path containing a space (common
 # on macOS: "/Users/Jane Doe/...", "Library/Application Support/...") cannot be
-# tokenised back into argv. We therefore anchor on the trailing `daemon start`
-# tokens, which never contain spaces, and require `promptune` to be either the
-# program basename (`(?:^|/)promptune ...`) or the `-m` module target
-# (`... python -m promptune ...`). This recognises the console-script,
-# `python -m`, LaunchAgent-plist, and systemd ExecStart forms while rejecting a
-# process that merely passes "promptune daemon start" as ordinary arguments.
-_DAEMON_CMD_RE = re.compile(
-    r"(?:(?:^|/)promptune\s+daemon\s+start|"
-    r"(?:^|\s)\S*python(?:\d+(?:\.\d+)?)?\s+-m\s+promptune\s+daemon\s+start)"
-    r"(?:\s|$)"
+# tokenised back into argv. The executable name from `ps -o comm=` supplies the
+# missing identity boundary: console-script form needs comm=promptune, module
+# form needs comm=python*, and args must still end with `daemon start`.
+_PROMPTUNE_DAEMON_ARGS_RE = re.compile(
+    r"(?:^|/)promptune\s+daemon\s+start(?:\s|$)"
 )
+_PYTHON_MODULE_DAEMON_ARGS_RE = re.compile(
+    r"(?:^|\s)-m\s+promptune\s+daemon\s+start(?:\s|$)"
+)
+_STARTS_WITH_PYTHON_RE = re.compile(
+    r"^\S*python(?:\d+(?:\.\d+)?)?(?:\s|$)"
+)
+
+
+def _is_python_executable(name: str) -> bool:
+    return re.fullmatch(
+        r"python(?:\d+(?:\.\d+)?)?", name.lower()
+    ) is not None
+
+
+def _is_console_script_command(command: str) -> bool:
+    if _STARTS_WITH_PYTHON_RE.search(command):
+        return False
+    return _PROMPTUNE_DAEMON_ARGS_RE.search(command) is not None
 
 
 def _is_daemon_process(pid: int) -> bool:
@@ -135,9 +166,18 @@ def _is_daemon_process(pid: int) -> bool:
     if not _is_running(pid):
         return False
     command = _process_command(pid)
-    if command is None:
+    process_name = _process_name(pid)
+    if command is None or process_name is None:
         return False
-    return _DAEMON_CMD_RE.search(command) is not None
+    process_name_norm = process_name.lower()
+    if process_name_norm == "promptune":
+        return _is_console_script_command(command)
+    if _is_python_executable(process_name_norm):
+        return (
+            _PYTHON_MODULE_DAEMON_ARGS_RE.search(command) is not None
+            or _is_console_script_command(command)
+        )
+    return False
 
 
 def _cleanup() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,8 @@ from promptune.daemon.daemon import (
     _is_daemon_process,
     _is_running,
     _on_hotkey,
+    _process_command,
+    _process_name,
     _read_pid,
     _write_pid,
     get_status,
@@ -47,6 +50,34 @@ class TestPIDManagement:
     def test_is_running_true_for_self(self) -> None:
         assert _is_running(os.getpid()) is True
 
+    def test_process_command_does_not_hide_unexpected_errors(self) -> None:
+        with (
+            patch(
+                "promptune.daemon.daemon.subprocess.run",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            _process_command(12345)
+
+    def test_process_name_does_not_hide_unexpected_errors(self) -> None:
+        with (
+            patch(
+                "promptune.daemon.daemon.subprocess.run",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            _process_name(12345)
+
+    def test_process_helpers_return_none_for_ps_failures(self) -> None:
+        with patch(
+            "promptune.daemon.daemon.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("ps", 2),
+        ):
+            assert _process_command(12345) is None
+            assert _process_name(12345) is None
+
     def test_is_daemon_process_rejects_argument_text_match(self) -> None:
         """A reused PID is not ours just because argv mentions promptune daemon."""
         with (
@@ -61,6 +92,10 @@ class TestPIDManagement:
     def test_is_daemon_process_accepts_promptune_daemon_start(self) -> None:
         with (
             patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="promptune",
+            ),
             patch(
                 "promptune.daemon.daemon._process_command",
                 return_value="/venv/bin/promptune daemon start --foreground",
@@ -81,6 +116,10 @@ class TestPIDManagement:
         with (
             patch("promptune.daemon.daemon._is_running", return_value=True),
             patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="promptune",
+            ),
+            patch(
                 "promptune.daemon.daemon._process_command",
                 return_value=(
                     "/Users/Jane Doe/Library/Application Support/venv/bin/"
@@ -95,10 +134,52 @@ class TestPIDManagement:
         with (
             patch("promptune.daemon.daemon._is_running", return_value=True),
             patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python",
+            ),
+            patch(
                 "promptune.daemon.daemon._process_command",
                 return_value=(
                     "/Users/Jane Doe/.venv/bin/python -m promptune daemon "
                     "start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_capitalized_python_comm(self) -> None:
+        """macOS framework builds can report Python with a capital P."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="Python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Library/Frameworks/Python.framework/Versions/3.14/bin/"
+                    "python3 -m promptune daemon start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_python_comm_console_script(
+        self,
+    ) -> None:
+        """Shebang console scripts can report Python as the executable."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.14",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Users/Jane Doe/Library/Application Support/venv/bin/"
+                    "promptune daemon start --foreground"
                 ),
             ),
         ):
@@ -116,14 +197,74 @@ class TestPIDManagement:
         ):
             assert _is_daemon_process(12345) is False
 
+    def test_is_daemon_process_rejects_python_worker_slash_promptune_arg(
+        self,
+    ) -> None:
+        """Python workers are not daemons just because an arg names promptune."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/python worker.py /tmp/promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
     def test_is_daemon_process_rejects_non_python_module_arg(self) -> None:
         """Only Python's `-m promptune daemon start` form is a daemon."""
         with (
             patch("promptune.daemon.daemon._is_running", return_value=True),
             patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="some-tool",
+                create=True,
+            ),
+            patch(
                 "promptune.daemon.daemon._process_command",
                 return_value=(
                     "/usr/bin/some-tool --module -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_slash_promptune_argument(self) -> None:
+        """A non-daemon process can pass a path containing promptune words."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="grep",
+                create=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/grep /tmp/promptune daemon start log.txt"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_python_module_words_as_args(self) -> None:
+        """Only the process executable can be Python for `-m promptune`."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="grep",
+                create=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/grep python -m promptune daemon start"
                 ),
             ),
         ):

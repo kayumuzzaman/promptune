@@ -12,9 +12,9 @@
 | Date | 2026-06-19 |
 | Branch | q/bug-hunt-beta-readiness |
 | Python | 3.14.3 |
-| Total Tests | 1148 |
-| Test Result | **1142 passed, 6 skipped, 0 failed** |
-| Coverage | **97.45%** (gate ≥ 85%) ✅ |
+| Total Tests | 1156 |
+| Test Result | **1150 passed, 6 skipped, 0 failed** |
+| Coverage | **97.46%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
@@ -66,7 +66,7 @@
 | `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
-| `promptune/daemon/daemon.py` | 232 | 9 | 96% | ✅ | exact PID identity + normal-exit cleanup |
+| `promptune/daemon/daemon.py` | 255 | 9 | 96% | ✅ | executable-bound PID identity + normal-exit cleanup |
 | `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
 | `promptune/daemon/ipc.py` | 121 | 8 | 93% | ✅ | Was 82%; timeout/bind/JSON edge coverage |
 | `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
@@ -101,7 +101,7 @@
 | `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4113** | **105** | **97.45%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4136** | **105** | **97.46%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -117,6 +117,33 @@
 ---
 
 ## Known Issues
+
+### -8. PR #19 repeated Codex validation loop (2026-06-19) — 2 findings [RESOLVED]
+
+The repeated PR validation plus code scan found two more PID helper flaws. Each
+fix landed with RED regression tests first, a targeted GREEN run, then full
+lint/type/actionlint/coverage/warning gates:
+
+- **HIGH** `daemon/daemon.py` — the round--7 regex still relied on the
+  space-joined `ps -o command=` text, so an unrelated process whose arguments
+  contained `/tmp/promptune daemon start` or `python -m promptune daemon start`
+  could be mistaken for the daemon if its PID was reused. `_is_daemon_process()`
+  now verifies both command shape and the executable basename from
+  `ps -o comm=`: console-script form requires `comm=promptune`, Python module
+  form requires `comm=python*`, and shebang console scripts launched under
+  Python remain accepted. Regressions:
+  `test_is_daemon_process_rejects_slash_promptune_argument`,
+  `test_is_daemon_process_rejects_python_module_words_as_args`,
+  `test_is_daemon_process_accepts_python_comm_console_script`, and
+  `test_is_daemon_process_accepts_capitalized_python_comm`.
+- **MEDIUM** `daemon/daemon.py` — the PID `ps` helpers caught broad
+  `Exception`, hiding unexpected programming/runtime errors as "not a daemon".
+  They now catch only `OSError` and `subprocess.SubprocessError`, still
+  returning `None` for normal `ps` failures/timeouts while surfacing unexpected
+  failures. Regressions:
+  `test_process_command_does_not_hide_unexpected_errors`,
+  `test_process_name_does_not_hide_unexpected_errors`, and
+  `test_process_helpers_return_none_for_ps_failures`.
 
 ### -7. PR #19 Codex revalidation scan (2026-06-19) — 3 findings [RESOLVED]
 
@@ -135,9 +162,9 @@ lint/type/coverage/warning gates:
 - **HIGH** `daemon/daemon.py` — PID identity regex accepted any command line
   containing `-m promptune daemon start`, not just a Python module launch. A
   reused PID from another tool could therefore be treated as the Promptune
-  daemon and killed by `stop_daemon()`. Regex now accepts console-script
-  `promptune daemon start` or Python executable `python* -m promptune daemon
-  start` forms only. Regression:
+  daemon and killed by `stop_daemon()`. This was first tightened to recognized
+  console-script/module launch forms; round--8 then added the current
+  `ps -o comm=` executable-name boundary. Regression:
   `test_is_daemon_process_rejects_non_python_module_arg`.
 - **LOW** docs — formatter removal still left stale current-state wording:
   README's config table advertised provider "format style", and the verification
@@ -167,9 +194,9 @@ test first, a targeted GREEN run, then full lint/types/coverage gates.
   `Library/Application Support`, a user's full name), because `ps -o command=`
   space-joins argv and `shlex.split` then split the path itself. Result: `stop`
   orphaned the live daemon (deleted pidfile/socket without killing) and `start`
-  launched a duplicate. Replaced token parsing with a path-space-robust regex
-  anchored on `/promptune … daemon start` or `-m promptune daemon start`; still
-  rejects processes that merely pass those words as arguments.
+  launched a duplicate. Replaced token parsing with path-space-robust command
+  shape checks; round--8 added the current `ps -o comm=` executable-name
+  boundary so plain arguments containing those words are still rejected.
 - **HIGH** `cli.py` — `enhance --format {xml,markdown,plain}` was accepted but
   never written to `cfg["provider"]["format_style"]`, so the documented flag was
   a silent no-op. Initially wired into config; on consolidating PR #18 this was
@@ -486,7 +513,7 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 | ~~P1~~ | ~~Fix SQLite `ResourceWarning`~~ | ✅ Done | Idempotent close + lifecycle |
 | ~~P1~~ | ~~Improve `hotkey.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `ipc.py` 82% → ≥90%~~ | ✅ Done | 93% |
-| ~~P1~~ | ~~Improve `daemon.py` 83% → ≥90%~~ | ✅ Done | 94% |
+| ~~P1~~ | ~~Improve `daemon.py` 83% → ≥90%~~ | ✅ Done | 96% |
 | ~~P2~~ | ~~Improve `engine.py` 86% → ≥90%~~ | ✅ Done | 97% |
 | ~~P2~~ | ~~Improve `collectors.py` 85% → ≥90%~~ | ✅ Done | 100% |
 | ~~P2~~ | ~~Add `__main__.py` smoke test~~ | ✅ Done | 100% (runpy) |
@@ -514,6 +541,6 @@ After running verification, update:
 ## CI Pipeline Reference
 
 See `.github/workflows/ci.yml` for automated checks.
-Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97%).
+Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97.46%).
 Linux CI uses `.coveragerc-linux` so macOS-only daemon modules are omitted only
 on Linux; local macOS coverage includes and measures those modules.
