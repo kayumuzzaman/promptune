@@ -26,22 +26,29 @@ def get_pr_diff(event: dict) -> str:
             "Accept": "application/vnd.github.v3.diff",
         },
     )
-    with urllib.request.urlopen(req) as resp:
-        return resp.read().decode()
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.read().decode()
+    except urllib.error.HTTPError as e:
+        print(f"Failed to fetch PR diff: {e.code} {e.reason}")
+        return ""
 
 
 def get_push_diff(event: dict) -> str:
     before = event.get("before")
-    if not before or before == "0000000000000000000000000000000000000000":
-        result = subprocess.run(
-            ["git", "diff", "4b825dc642cb6eb9a060e54bf899d153036e3e6e", "HEAD"],
-            capture_output=True, text=True,
-        )
-    else:
-        result = subprocess.run(
-            ["git", "diff", f"{before}..HEAD"],
-            capture_output=True, text=True,
-        )
+    try:
+        if not before or before == "0000000000000000000000000000000000000000":
+            result = subprocess.run(
+                ["git", "diff", "4b825dc642cb6eb9a060e54bf899d153036e3e6e", "HEAD"],
+                capture_output=True, text=True, check=True,
+            )
+        else:
+            result = subprocess.run(
+                ["git", "diff", f"{before}..HEAD"],
+                capture_output=True, text=True, check=True,
+            )
+    except subprocess.CalledProcessError:
+        return ""
     return result.stdout
 
 
@@ -55,7 +62,7 @@ def get_diff() -> str:
         return get_push_diff(event)
     else:
         print(f"Unsupported event: {EVENT_NAME}")
-        sys.exit(0)
+        sys.exit(1)
 
 
 def review_with_gemini(diff: str, max_diff_chars: int = 50_000) -> str:
@@ -139,7 +146,11 @@ def post_comment(comment: str) -> None:
             "Content-Type": "application/json",
         },
     )
-    urllib.request.urlopen(req)
+    try:
+        urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        print(f"Failed to post comment: {e.code} {e.reason}")
+        print(e.read().decode())
 
 
 def main() -> None:
