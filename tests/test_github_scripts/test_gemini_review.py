@@ -64,6 +64,14 @@ def test_get_pr_diff_http_error_returns_empty(mod, tmp_path):
     assert diff == ""
 
 
+def test_get_pr_diff_url_error_returns_empty(mod, tmp_path):
+    event = {"pull_request": {"url": "https://api.github.com/repos/owner/repo/pulls/1"}}
+    with patch.object(mod.urllib.request, "urlopen") as mock:
+        mock.side_effect = mod.urllib.error.URLError("Connection refused")
+        diff = mod.get_pr_diff(event)
+    assert diff == ""
+
+
 # ---------------------------------------------------------------------------
 # get_push_diff
 # ---------------------------------------------------------------------------
@@ -88,7 +96,7 @@ def test_get_push_diff_initial_commit(mod):
         diff = mod.get_push_diff(event)
     assert diff
     cmd = mock.call_args[0][0]
-    assert cmd == ["git", "diff", "4b825dc642cb6eb9a060e54bf899d153036e3e6e", "HEAD"]
+    assert cmd == ["git", "diff", mod.EMPTY_TREE_SHA, "HEAD"]
 
 
 def test_get_push_diff_no_before(mod):
@@ -97,7 +105,7 @@ def test_get_push_diff_no_before(mod):
         mock.return_value.stdout = "--- a/file.py\n+++ b/file.py\n"
         mod.get_push_diff(event)
     cmd = mock.call_args[0][0]
-    assert cmd == ["git", "diff", "4b825dc642cb6eb9a060e54bf899d153036e3e6e", "HEAD"]
+    assert cmd == ["git", "diff", mod.EMPTY_TREE_SHA, "HEAD"]
 
 
 def test_get_push_diff_subprocess_error_returns_empty(mod):
@@ -171,7 +179,8 @@ def test_review_with_gemini_api_error(mod):
             "url", 429, "Too Many Requests", {}, None,
         )
         review = mod.review_with_gemini("diff")
-    assert "Gemini API error: 429" in review
+    assert "Gemini API error" in review
+    assert "429" in review
 
 
 def test_review_with_gemini_unexpected_response(mod):
@@ -230,7 +239,7 @@ def test_post_comment_on_push(mod, tmp_path):
     assert body["body"] == "Nice commit!"
 
 
-def test_post_comment_http_error_handled(mod, tmp_path):
+def test_post_comment_http_error_exits(mod, tmp_path):
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(mod, "EVENT_NAME", "push")
     event_file = _write_event(tmp_path, {})
@@ -240,7 +249,29 @@ def test_post_comment_http_error_handled(mod, tmp_path):
         mock.side_effect = mod.urllib.error.HTTPError(
             "url", 403, "Forbidden", {}, None,
         )
-        mod.post_comment("comment")  # should not raise
+        with pytest.raises(SystemExit) as exc:
+            mod.post_comment("comment")
+    assert exc.value.code == 1
+
+
+def test_post_comment_url_error_exits(mod, tmp_path):
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(mod, "EVENT_NAME", "push")
+    event_file = _write_event(tmp_path, {})
+    monkeypatch.setattr(mod, "EVENT_PATH", str(event_file))
+
+    with patch.object(mod.urllib.request, "urlopen") as mock:
+        mock.side_effect = mod.urllib.error.URLError("Connection reset")
+        with pytest.raises(SystemExit) as exc:
+            mod.post_comment("comment")
+    assert exc.value.code == 1
+
+
+def test_review_with_gemini_url_error(mod):
+    with patch.object(mod.urllib.request, "urlopen") as mock:
+        mock.side_effect = mod.urllib.error.URLError("Timeout")
+        review = mod.review_with_gemini("diff")
+    assert "Gemini API error" in review
 
 
 # ---------------------------------------------------------------------------
