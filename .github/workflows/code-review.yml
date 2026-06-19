@@ -25,8 +25,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Generate GitHub App token
+        uses: tibdex/github-app-token@v2
+        id: app-token
+        with:
+          app_id: ${{ secrets.GEMINI_APP_ID }}
+          private_key: ${{ secrets.GEMINI_APP_KEY }}
+
       - name: Run Gemini Code Review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: python .github/scripts/gemini_review.py
