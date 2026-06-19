@@ -120,7 +120,7 @@ def _dedup_provider_model_routes(
     """
     max_tier = cfg["enhancement"].get("max_tier", 0)
     if max_tier == 0:
-        return None
+        return set()
     routes: set[tuple[str | None, str | None]] = set()
     if (
         cfg["local_llm"].get("enabled", False)
@@ -131,7 +131,7 @@ def _dedup_provider_model_routes(
         provider = cfg["provider"]["default"]
         model = cfg["provider"].get(f"model_{provider}", "")
         routes.add((provider, model or None))
-    return routes or None
+    return routes
 
 
 def get_registry() -> ProviderRegistry:

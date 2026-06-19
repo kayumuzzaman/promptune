@@ -550,7 +550,7 @@ Key sections:
 
 | Section | Controls |
 |---------|----------|
-| `[provider]` | Default provider, per-provider model, format style |
+| `[provider]` | Default provider and per-provider model |
 | `[api_keys]` | Claude / OpenAI / OpenRouter keys |
 | `[enhancement]` | `max_tier`, default style, dedup, preference learning |
 | `[local_llm]` | Ollama / OpenAI-compatible host + model (Tier 1) |

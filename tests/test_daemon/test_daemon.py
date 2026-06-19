@@ -116,6 +116,19 @@ class TestPIDManagement:
         ):
             assert _is_daemon_process(12345) is False
 
+    def test_is_daemon_process_rejects_non_python_module_arg(self) -> None:
+        """Only Python's `-m promptune daemon start` form is a daemon."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/some-tool --module -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
     def test_cleanup_removes_files(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
         sock_file = tmp_path / "promptune.sock"

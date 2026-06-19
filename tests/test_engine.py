@@ -318,6 +318,57 @@ def test_engine_auto_dedup_matches_cloud_fallback_under_local_enabled(
     assert cloud.call_count == 1
 
 
+@pytest.mark.parametrize(
+    ("max_tier", "local_enabled"),
+    [
+        (0, True),
+        (1, False),
+    ],
+)
+def test_engine_auto_dedup_does_not_reuse_ai_result_when_only_tier0_possible(
+    mock_config: dict,
+    tmp_path,
+    mocker: MockerFixture,
+    max_tier: int,
+    local_enabled: bool,
+) -> None:
+    """AI cache entries must not satisfy a config that can only return tier 0."""
+    from promptune.history import HistoryEntry, HistoryStore
+
+    db = tmp_path / "history.db"
+    prompt = "debug the python authentication failure in detail"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["enhancement"]["max_tier"] = max_tier
+    mock_config["local_llm"]["enabled"] = local_enabled
+    mock_config["enhancement"]["preference_learning"] = False
+    mocker.patch("promptune.engine._detect_project_root", return_value="/project")
+
+    with HistoryStore(db_path=db) as store:
+        store.record(
+            HistoryEntry(
+                original=prompt,
+                enhanced="Cloud cached result",
+                decision="accept",
+                edit_result=None,
+                tier_used=2,
+                provider="claude",
+                format_style="auto",
+                model=mock_config["provider"]["model_claude"],
+                score_before=20,
+                score_after=90,
+                latency_ms=8.0,
+                rules_applied=[],
+                context_json=None,
+                project_root="/project",
+            )
+        )
+
+    result = enhance(prompt, mock_config)
+
+    assert result.tier_used == 0
+    assert result.enhanced != "Cloud cached result"
+
+
 def test_engine_no_record_when_history_disabled(
     mock_config: dict, tmp_path
 ) -> None:

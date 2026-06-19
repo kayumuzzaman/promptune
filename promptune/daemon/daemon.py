@@ -120,11 +120,13 @@ def _process_command(pid: int) -> str | None:
 # tokenised back into argv. We therefore anchor on the trailing `daemon start`
 # tokens, which never contain spaces, and require `promptune` to be either the
 # program basename (`(?:^|/)promptune ...`) or the `-m` module target
-# (`... -m promptune ...`). This recognises the console-script, `python -m`,
-# LaunchAgent-plist, and systemd ExecStart forms while rejecting a process that
-# merely passes "promptune daemon start" as ordinary arguments.
+# (`... python -m promptune ...`). This recognises the console-script,
+# `python -m`, LaunchAgent-plist, and systemd ExecStart forms while rejecting a
+# process that merely passes "promptune daemon start" as ordinary arguments.
 _DAEMON_CMD_RE = re.compile(
-    r"(?:(?:^|/)promptune|(?:^|\s)-m\s+promptune)\s+daemon\s+start(?:\s|$)"
+    r"(?:(?:^|/)promptune\s+daemon\s+start|"
+    r"(?:^|\s)\S*python(?:\d+(?:\.\d+)?)?\s+-m\s+promptune\s+daemon\s+start)"
+    r"(?:\s|$)"
 )
 
 

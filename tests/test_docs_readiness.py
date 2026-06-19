@@ -115,3 +115,29 @@ def test_github_release_waits_for_pypi_publish() -> None:
 
     assert re.search(r"\n  publish:\n(?:.*\n)*?    needs: build", release_yml)
     assert re.search(r"\n  release:\n(?:.*\n)*?    needs: publish", release_yml)
+
+
+def test_public_config_docs_do_not_advertise_removed_format_style() -> None:
+    """Public config docs should not mention removed provider formatting."""
+    public_docs = [
+        "README.md",
+        "docs/USER_GUIDE.md",
+        "docs/ARCHITECTURE.md",
+        "config.example.toml",
+    ]
+    offenders: list[str] = []
+
+    for rel_path in public_docs:
+        for line_no, line in enumerate(_read(rel_path).splitlines(), start=1):
+            if re.search(r"\bformat[_ ]style\b|\bformat overrides\b", line):
+                offenders.append(f"{rel_path}:{line_no}: {line.strip()}")
+
+    assert offenders == []
+
+
+def test_verification_report_has_no_stale_formatter_noop_note() -> None:
+    """Verification report should not keep stale current-state format notes."""
+    report = _read("docs/VERIFICATION_REPORT.md")
+
+    assert "currently a no-op" not in report
+    assert "--format-style" not in report

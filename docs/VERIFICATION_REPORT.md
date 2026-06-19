@@ -12,8 +12,8 @@
 | Date | 2026-06-19 |
 | Branch | q/bug-hunt-beta-readiness |
 | Python | 3.14.3 |
-| Total Tests | 1143 |
-| Test Result | **1137 passed, 6 skipped, 0 failed** |
+| Total Tests | 1148 |
+| Test Result | **1142 passed, 6 skipped, 0 failed** |
 | Coverage | **97.45%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
@@ -117,6 +117,33 @@
 ---
 
 ## Known Issues
+
+### -7. PR #19 Codex revalidation scan (2026-06-19) — 3 findings [RESOLVED]
+
+Full PR validation plus another code scan found three follow-up issues. Each fix
+landed with a RED regression test first, targeted GREEN run, and full
+lint/type/coverage/warning gates:
+
+- **HIGH** `engine.py` / `dedup.py` — `_dedup_provider_model_routes()` used
+  `None` for both "no provider/model filter" and "no AI route is possible".
+  With `max_tier=0` or `max_tier=1` plus local LLM disabled, dedup could reuse a
+  previous cloud/local AI result even though the current config can only produce
+  tier 0. The engine now passes an empty route set for tier-0-only configs, so
+  non-tier-0 history entries are excluded while true tier-0 entries remain
+  universal. Regression:
+  `test_engine_auto_dedup_does_not_reuse_ai_result_when_only_tier0_possible`.
+- **HIGH** `daemon/daemon.py` — PID identity regex accepted any command line
+  containing `-m promptune daemon start`, not just a Python module launch. A
+  reused PID from another tool could therefore be treated as the Promptune
+  daemon and killed by `stop_daemon()`. Regex now accepts console-script
+  `promptune daemon start` or Python executable `python* -m promptune daemon
+  start` forms only. Regression:
+  `test_is_daemon_process_rejects_non_python_module_arg`.
+- **LOW** docs — formatter removal still left stale current-state wording:
+  README's config table advertised provider "format style", and the verification
+  report still called the removed format flag a current no-op. README and report
+  were corrected, with docs-readiness regressions covering public config docs
+  and the stale report phrase.
 
 ### -6. Independent multi-agent re-audit (2026-06-19) — 6 findings [5 RESOLVED, 1 documented]
 
@@ -345,8 +372,7 @@ Accepted minor (documented, not fixed): `enhance()` opens a second short-lived
 sqlite connection for the record write rather than reusing the read-phase store.
 The dominant load cost (the full-table preference scan) is fixed above; a local
 sqlite open is sub-millisecond and not worth re-indenting the core routing
-function. The `--format-style` CLI flag on `enhance` is also currently a no-op
-(never applied to cfg) — pre-existing, tracked separately.
+function.
 
 ### -2. Multi-agent audit round 3 (2026-06-18) — 3 findings [RESOLVED]
 Third parallel sub-agent pass. CLI/config domain came back clean; daemon and
@@ -454,7 +480,7 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 
 | Priority | Item | Status | Notes |
 |----------|------|--------|-------|
-| ~~P2~~ | ~~Dedup provider/model filter mismatch (finding -5)~~ | ✅ Done | Auto-format dedup allows all possible AI routes and true tier-0 entries |
+| ~~P2~~ | ~~Dedup provider/model filter mismatch (finding -5/-7)~~ | ✅ Done | Auto-format dedup allows possible AI routes, excludes AI history when only tier 0 is possible, and keeps true tier-0 entries universal |
 | ~~P0~~ | ~~Fix 33 ruff lint errors~~ | ✅ Done | 0 errors |
 | ~~P0~~ | ~~Improve `cli.py` coverage 67% → ≥90%~~ | ✅ Done | 98% |
 | ~~P1~~ | ~~Fix SQLite `ResourceWarning`~~ | ✅ Done | Idempotent close + lifecycle |
