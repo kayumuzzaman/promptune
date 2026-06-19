@@ -206,6 +206,28 @@ class TestPIDManagement:
         ):
             assert _is_daemon_process(12345) is True
 
+    def test_is_daemon_process_accepts_python_console_script_space_path(
+        self,
+    ) -> None:
+        """Python shebang wrappers can point at promptune under a spaced path."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="Python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Library/Frameworks/Python.framework/Versions/3.14/"
+                    "Resources/Python.app/Contents/MacOS/Python "
+                    "/Users/Jane Doe/Library/Application Support/venv/bin/"
+                    "promptune daemon start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
     def test_is_daemon_process_rejects_bare_arg_subsequence(self) -> None:
         """A process that merely passes `promptune daemon start` as plain
         arguments (not as the program / -m target) is not our daemon."""

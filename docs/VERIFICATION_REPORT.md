@@ -12,9 +12,9 @@
 | Date | 2026-06-19 |
 | Branch | q/bug-hunt-beta-readiness |
 | Python | 3.14.3 |
-| Total Tests | 1158 |
-| Test Result | **1152 passed, 6 skipped, 0 failed** |
-| Coverage | **97.46%** (gate ≥ 85%) ✅ |
+| Total Tests | 1159 |
+| Test Result | **1153 passed, 6 skipped, 0 failed** |
+| Coverage | **97.47%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
@@ -66,7 +66,7 @@
 | `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
-| `promptune/daemon/daemon.py` | 258 | 9 | 97% | ✅ | executable-bound PID identity + normal-exit cleanup |
+| `promptune/daemon/daemon.py` | 264 | 9 | 97% | ✅ | executable-bound PID identity + normal-exit cleanup |
 | `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
 | `promptune/daemon/ipc.py` | 121 | 8 | 93% | ✅ | Was 82%; timeout/bind/JSON edge coverage |
 | `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
@@ -101,7 +101,7 @@
 | `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4139** | **105** | **97.46%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4145** | **105** | **97.47%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -118,6 +118,21 @@
 
 ## Known Issues
 
+### -10. PR #19 third repeated Codex validation loop (2026-06-19) — 1 finding [RESOLVED]
+
+The next PR validation plus code scan found one more daemon PID identity edge
+case. The fix landed with a RED regression test first, a targeted GREEN run,
+then full lint/type/actionlint/coverage/warning gates:
+
+- **HIGH** `daemon/daemon.py` — round--9 restored lowercase
+  `python /path/to/promptune daemon start` but still false-negatived a real
+  Python shebang console script when the installed path contained spaces, e.g.
+  `Python /Users/Jane Doe/Library/Application Support/venv/bin/promptune daemon
+  start`. `_is_daemon_process()` now accepts the common spaced venv
+  `.../bin/promptune` / `.../Scripts/promptune` form while still rejecting
+  Python worker scripts that merely pass promptune-looking args. Regression:
+  `test_is_daemon_process_accepts_python_console_script_space_path`.
+
 ### -9. PR #19 second repeated Codex validation loop (2026-06-19) — 1 finding [RESOLVED]
 
 The next PR validation plus code scan found one more daemon PID identity edge
@@ -128,10 +143,10 @@ then full lint/type/actionlint/coverage/warning gates:
   ambiguous in `ps -o command=` output. Lowercase `python /path/to/promptune
   daemon start` could false-negative, while capitalized macOS framework
   `Python ... worker.py /tmp/promptune daemon start` could false-positive.
-  `_is_daemon_process()` now separates non-Python console-script matching from
-  Python interpreter wrapper matching: it accepts `python /no-space/path/promptune
-  daemon start` and `python -m promptune daemon start`, but rejects arbitrary
-  later arguments containing `/tmp/promptune daemon start`. Regressions:
+  `_is_daemon_process()` separated non-Python console-script matching from
+  Python interpreter wrapper matching: round--10 then extended this to the common
+  spaced `.../bin/promptune` console-script path. It rejects arbitrary later
+  arguments containing `/tmp/promptune daemon start`. Regressions:
   `test_is_daemon_process_accepts_python_interpreter_console_script` and
   `test_is_daemon_process_rejects_capitalized_python_worker_arg`.
 
@@ -558,6 +573,6 @@ After running verification, update:
 ## CI Pipeline Reference
 
 See `.github/workflows/ci.yml` for automated checks.
-Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97.46%).
+Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97.47%).
 Linux CI uses `.coveragerc-linux` so macOS-only daemon modules are omitted only
 on Linux; local macOS coverage includes and measures those modules.

@@ -138,8 +138,9 @@ def _process_name(pid: int) -> str | None:
 # tokenised back into argv. The executable name from `ps -o comm=` supplies the
 # missing identity boundary: console-script form needs comm=promptune, module
 # form needs comm=python*, and args must still end with `daemon start`. For
-# Python shebang wrappers, accept only the unambiguous no-space script path form
-# (`python /.../promptune daemon start`), not arbitrary later arguments.
+# Python shebang wrappers, accept the unambiguous no-space script path form
+# (`python /.../promptune daemon start`) and the common spaced venv path form
+# (`python /.../venv/bin/promptune daemon start`), not arbitrary worker args.
 _PROMPTUNE_DAEMON_ARGS_RE = re.compile(
     r"(?:^|/)promptune\s+daemon\s+start(?:\s|$)"
 )
@@ -152,6 +153,15 @@ _PYTHON_COMMAND_RE = re.compile(
 _PYTHON_CONSOLE_SCRIPT_RE = re.compile(
     r"^\S*python(?:\d+(?:\.\d+)?)?\s+"
     r"(?:\S*/)?promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
+)
+_PYTHON_SPACED_CONSOLE_SCRIPT_RE = re.compile(
+    r"^\S*python(?:\d+(?:\.\d+)?)?\s+"
+    r"/.+/(?:bin|Scripts)/promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
+)
+_PYTHON_SCRIPT_ARG_RE = re.compile(
+    r"^\S*python(?:\d+(?:\.\d+)?)?\s+\S+\.pyw?(?:\s|$)",
     re.IGNORECASE,
 )
 
@@ -169,7 +179,11 @@ def _is_console_script_command(command: str) -> bool:
 
 
 def _is_python_console_script_command(command: str) -> bool:
-    return _PYTHON_CONSOLE_SCRIPT_RE.search(command) is not None
+    if _PYTHON_CONSOLE_SCRIPT_RE.search(command):
+        return True
+    if _PYTHON_SCRIPT_ARG_RE.search(command):
+        return False
+    return _PYTHON_SPACED_CONSOLE_SCRIPT_RE.search(command) is not None
 
 
 def _is_daemon_process(pid: int) -> bool:
