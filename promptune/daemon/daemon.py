@@ -12,7 +12,9 @@ import contextlib
 import json
 import logging
 import os
+import re
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -95,6 +97,47 @@ def _is_running(pid: int) -> bool:
     return True
 
 
+def _process_command(pid: int) -> str | None:
+    """Return the process command line for *pid*, if it can be verified."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+# Matches the daemon launch forms in `ps -o command=` output. `ps` space-joins
+# argv with no quoting, so an interpreter/script path containing a space (common
+# on macOS: "/Users/Jane Doe/...", "Library/Application Support/...") cannot be
+# tokenised back into argv. We therefore anchor on the trailing `daemon start`
+# tokens, which never contain spaces, and require `promptune` to be either the
+# program basename (`(?:^|/)promptune ...`) or the `-m` module target
+# (`... -m promptune ...`). This recognises the console-script, `python -m`,
+# LaunchAgent-plist, and systemd ExecStart forms while rejecting a process that
+# merely passes "promptune daemon start" as ordinary arguments.
+_DAEMON_CMD_RE = re.compile(
+    r"(?:(?:^|/)promptune|(?:^|\s)-m\s+promptune)\s+daemon\s+start(?:\s|$)"
+)
+
+
+def _is_daemon_process(pid: int) -> bool:
+    """Return True only when *pid* is a live promptune daemon process."""
+    if not _is_running(pid):
+        return False
+    command = _process_command(pid)
+    if command is None:
+        return False
+    return _DAEMON_CMD_RE.search(command) is not None
+
+
 def _cleanup() -> None:
     """Remove *PID_FILE* and *SOCKET_PATH*, ignoring missing files."""
     for path in (PID_FILE, SOCKET_PATH):
@@ -110,7 +153,7 @@ def _cleanup() -> None:
 def get_status() -> DaemonStatus:
     """Return a :class:`DaemonStatus` reflecting current daemon health."""
     pid = _read_pid()
-    running = pid is not None and _is_running(pid)
+    running = pid is not None and _is_daemon_process(pid)
 
     uptime_seconds: float | None = None
     if running and PID_FILE.exists():
@@ -320,7 +363,7 @@ def start_daemon(
 ) -> None:
     """Start the promptune daemon."""
     existing_pid = _read_pid()
-    if existing_pid is not None and _is_running(existing_pid):
+    if existing_pid is not None and _is_daemon_process(existing_pid):
         _log.error("Daemon already running (PID %d)", existing_pid)
         return
 
@@ -430,10 +473,13 @@ def start_daemon(
         platform.hotkey.listen()
     except Exception:
         _log.exception("Daemon startup failed; cleaning up")
+        raise
+    finally:
         if prewarm_timer is not None:
             prewarm_timer.cancel()
+        with contextlib.suppress(Exception):
+            platform.hotkey.stop()
         _cleanup()
-        raise
 
 
 def stop_daemon() -> None:
@@ -443,7 +489,7 @@ def stop_daemon() -> None:
         _log.info("No PID file found; daemon not running")
         return
 
-    if not _is_running(pid):
+    if not _is_daemon_process(pid):
         _log.info("PID %d not running; cleaning up stale files", pid)
         _cleanup()
         return
@@ -455,14 +501,15 @@ def stop_daemon() -> None:
         return
 
     for _ in range(30):
-        if not _is_running(pid):
+        if not _is_daemon_process(pid):
             _cleanup()
             _log.info("Daemon (PID %d) stopped gracefully", pid)
             return
         time.sleep(0.1)
 
-    with contextlib.suppress(OSError):
-        os.kill(pid, signal.SIGKILL)
+    if _is_daemon_process(pid):
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGKILL)
 
     _cleanup()
     _log.info("Daemon (PID %d) force-killed", pid)

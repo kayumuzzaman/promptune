@@ -9,16 +9,16 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-18 |
-| Branch | fix/validation-round4 |
+| Date | 2026-06-19 |
+| Branch | q/bug-hunt-beta-readiness |
 | Python | 3.14.3 |
-| Total Tests | 1130 |
-| Test Result | **1124 passed, 6 skipped, 0 failed** |
-| Coverage | **97%** (gate ≥ 85%) ✅ |
+| Total Tests | 1143 |
+| Test Result | **1137 passed, 6 skipped, 0 failed** |
+| Coverage | **97.45%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
-| Mypy | **PASS** — 0 issues in 46 source files |
+| Mypy | **PASS** — 0 issues in 45 source files |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
-| Pytest Warnings | **4** — `PytestUnhandledThreadExceptionWarning` in prewarm timer test |
+| Pytest Warnings | **0** (verified with `-W error::pytest.PytestUnhandledThreadExceptionWarning`) ✅ |
 
 ---
 
@@ -26,13 +26,16 @@
 
 ```bash
 # Full suite (lint + types + tests + coverage)
-.venv/bin/ruff check . && .venv/bin/mypy promptune/ && .venv/bin/pytest --cov=promptune --cov-report=term-missing -q
+.venv/bin/ruff check . && .venv/bin/mypy promptune/ && .venv/bin/pytest --cov=promptune --cov-report=term-missing --cov-fail-under=85 -q
 
-# Tests only (fast, 17s)
+# Tests only (fast, 20s)
 .venv/bin/pytest -q
 
 # Coverage only
-.venv/bin/pytest --cov=promptune --cov-report=term-missing -q
+.venv/bin/pytest --cov=promptune --cov-report=term-missing --cov-fail-under=85 -q
+
+# Linux CI coverage (omits macOS-only daemon modules on Linux only)
+.venv/bin/pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-config=.coveragerc-linux --cov-fail-under=85 -q
 
 # Lint only
 .venv/bin/ruff check .
@@ -55,50 +58,50 @@
 |--------|-------|------|-------|--------|-------|
 | `promptune/__init__.py` | 1 | 0 | 100% | ✅ | |
 | `promptune/__main__.py` | 2 | 0 | 100% | ✅ | Smoke test added |
-| `promptune/cli.py` | 528 | 8 | 98% | ✅ | history_cmd lifecycle fix |
-| `promptune/config.py` | 91 | 4 | 96% | ✅ | +auto_enhance defaults |
-| `promptune/context/__init__.py` | 33 | 3 | 91% | ✅ | |
-| `promptune/context/collectors.py` | 142 | 0 | 100% | ✅ | Was 85% |
+| `promptune/cli.py` | 545 | 10 | 98% | ✅ | style override validation |
+| `promptune/config.py` | 109 | 5 | 95% | ✅ | +auto_enhance defaults |
+| `promptune/context/__init__.py` | 38 | 0 | 100% | ✅ | |
+| `promptune/context/collectors.py` | 154 | 1 | 99% | ✅ | Was 85% |
 | `promptune/context/ranker.py` | 56 | 1 | 98% | ✅ | |
-| `promptune/context/sanitizer.py` | 35 | 2 | 94% | ✅ | |
+| `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
-| `promptune/daemon/clipboard.py` | 56 | 4 | 93% | ✅ | |
-| `promptune/daemon/daemon.py` | 175 | 1 | 99% | ✅ | Clipboard delivery failure handling |
-| `promptune/daemon/hotkey.py` | 61 | 0 | 100% | ✅ | Was 69% |
-| `promptune/daemon/ipc.py` | 89 | 8 | 91% | ✅ | Was 82% |
-| `promptune/daemon/launchagent.py` | 22 | 0 | 100% | ✅ | |
-| `promptune/daemon/notify.py` | 18 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/__init__.py` | 35 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/base.py` | 54 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/linux_service.py` | 64 | 0 | 100% | ✅ | |
-| `promptune/daemon/platform/linux_wayland.py` | 278 | 14 | 95% | ✅ | Portal match/session/binding handling hardened |
-| `promptune/daemon/platform/linux_x11.py` | 178 | 0 | 100% | ✅ | Real-display X11 tests + failure propagation |
-| `promptune/daemon/platform/macos.py` | 47 | 2 | 96% | ✅ | |
-| `promptune/daemon/prewarm.py` | 43 | 1 | 98% | ✅ | |
-| `promptune/dedup.py` | 55 | 2 | 96% | ✅ | |
-| `promptune/engine.py` | 177 | 4 | 98% | ✅ | Was 86% |
-| `promptune/formatter.py` | 69 | 2 | 97% | ✅ | |
-| `promptune/gate.py` | 51 | 0 | 100% | ✅ | Was 69% |
-| `promptune/history.py` | 101 | 4 | 96% | ✅ | close() idempotent + context manager |
-| `promptune/hooks/__init__.py` | 14 | 0 | 100% | ✅ | |
-| `promptune/hooks/claude_code.py` | 51 | 2 | 96% | ✅ | |
+| `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
+| `promptune/daemon/daemon.py` | 232 | 9 | 96% | ✅ | exact PID identity + normal-exit cleanup |
+| `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
+| `promptune/daemon/ipc.py` | 121 | 8 | 93% | ✅ | Was 82%; timeout/bind/JSON edge coverage |
+| `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
+| `promptune/daemon/notify.py` | 20 | 0 | 100% | ✅ | |
+| `promptune/daemon/platform/__init__.py` | 22 | 0 | 100% | ✅ | |
+| `promptune/daemon/platform/base.py` | 23 | 0 | 100% | ✅ | |
+| `promptune/daemon/platform/linux_service.py` | 65 | 0 | 100% | ✅ | |
+| `promptune/daemon/platform/linux_wayland.py` | 316 | 14 | 96% | ✅ | Portal match/session/binding handling hardened |
+| `promptune/daemon/platform/linux_x11.py` | 220 | 0 | 100% | ✅ | Real-display X11 tests + failure propagation |
+| `promptune/daemon/platform/macos.py` | 52 | 1 | 98% | ✅ | |
+| `promptune/daemon/prewarm.py` | 40 | 0 | 100% | ✅ | Timer callback exceptions contained |
+| `promptune/dedup.py` | 64 | 3 | 95% | ✅ | auto cache route filters provider/model |
+| `promptune/engine.py` | 226 | 6 | 97% | ✅ | template aliases + dedup route filters |
+| `promptune/gate.py` | 32 | 0 | 100% | ✅ | Was 69% |
+| `promptune/history.py` | 125 | 5 | 96% | ✅ | close() idempotent + context manager |
+| `promptune/hooks/__init__.py` | 16 | 0 | 100% | ✅ | |
+| `promptune/hooks/claude_code.py` | 79 | 0 | 100% | ✅ | |
+| `promptune/hooks/codex.py` | 61 | 0 | 100% | ✅ | |
 | `promptune/mcp/__init__.py` | 0 | 0 | 100% | ✅ | |
-| `promptune/mcp/server.py` | 32 | 0 | 100% | ✅ | Was 53% |
-| `promptune/meta_prompt.py` | 47 | 0 | 100% | ✅ | |
+| `promptune/mcp/server.py` | 32 | 0 | 100% | ✅ | validates tool overrides |
+| `promptune/meta_prompt.py` | 56 | 1 | 98% | ✅ | |
 | `promptune/pqs.py` | 50 | 0 | 100% | ✅ | |
-| `promptune/preferences.py` | 62 | 2 | 97% | ✅ | |
-| `promptune/providers/__init__.py` | 25 | 0 | 100% | ✅ | |
-| `promptune/providers/anthropic.py` | 22 | 1 | 95% | ✅ | |
-| `promptune/providers/local.py` | 33 | 2 | 94% | ✅ | |
-| `promptune/providers/openai.py` | 21 | 1 | 95% | ✅ | |
-| `promptune/providers/openrouter.py` | 29 | 3 | 90% | ✅ | |
-| `promptune/scorer.py` | 250 | 16 | 94% | ✅ | |
-| `promptune/setup.py` | 161 | 4 | 98% | ✅ | Optional API key + tier resolver |
-| `promptune/shell.py` | 78 | 0 | 100% | ✅ | |
-| `promptune/templates.py` | 82 | 6 | 93% | ✅ | Was 89% |
-| `promptune/tier0.py` | 148 | 6 | 96% | ✅ | |
-| `promptune/tui.py` | 146 | 3 | 98% | ✅ | |
-| **TOTAL** | **3318** | **92** | **97%** | ✅ | Gate: ≥ 85% |
+| `promptune/preferences.py` | 68 | 2 | 97% | ✅ | |
+| `promptune/providers/__init__.py` | 32 | 0 | 100% | ✅ | |
+| `promptune/providers/anthropic.py` | 23 | 0 | 100% | ✅ | |
+| `promptune/providers/local.py` | 41 | 1 | 98% | ✅ | |
+| `promptune/providers/openai.py` | 27 | 1 | 96% | ✅ | |
+| `promptune/providers/openrouter.py` | 37 | 2 | 95% | ✅ | |
+| `promptune/scorer.py` | 253 | 14 | 94% | ✅ | |
+| `promptune/setup.py` | 171 | 4 | 98% | ✅ | Optional API key + tier resolver |
+| `promptune/shell.py` | 88 | 0 | 100% | ✅ | |
+| `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
+| `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
+| `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
+| **TOTAL** | **4113** | **105** | **97.45%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -114,6 +117,200 @@
 ---
 
 ## Known Issues
+
+### -6. Independent multi-agent re-audit (2026-06-19) — 6 findings [5 RESOLVED, 1 documented]
+
+Continuation of the bug hunt (Claude). Running the full suite locally on macOS
+first surfaced a **suite-wide hang**, then four parallel read-only review agents
+audited the whole codebase by domain. Every fix landed with a RED regression
+test first, a targeted GREEN run, then full lint/types/coverage gates.
+
+- **HIGH (test/CI blocker)** `tests/test_daemon/test_daemon.py` — `test_already_running_exits_early`
+  wrote the test's own PID to the daemon pidfile expecting an "already running"
+  early exit. The round--5 `_is_daemon_process` hardening correctly rejects the
+  pytest process (not a `promptune daemon start` argv), so `start_daemon()` fell
+  through to a real `get_platform()` + `hotkey.listen()` and **blocked the whole
+  suite forever on macOS**. CI only went green because headless Linux raises
+  `PlatformError` and bailed early — the suite was never actually runnable on
+  macOS. Test now mocks `_is_daemon_process=True` and asserts `get_platform` is
+  never called (validates the real early-exit contract, no hang). Production
+  code unchanged.
+- **HIGH** `daemon/daemon.py` — `_is_daemon_process` false-negatived a real
+  daemon whose interpreter/script path contains a space (common on macOS:
+  `Library/Application Support`, a user's full name), because `ps -o command=`
+  space-joins argv and `shlex.split` then split the path itself. Result: `stop`
+  orphaned the live daemon (deleted pidfile/socket without killing) and `start`
+  launched a duplicate. Replaced token parsing with a path-space-robust regex
+  anchored on `/promptune … daemon start` or `-m promptune daemon start`; still
+  rejects processes that merely pass those words as arguments.
+- **HIGH** `cli.py` — `enhance --format {xml,markdown,plain}` was accepted but
+  never written to `cfg["provider"]["format_style"]`, so the documented flag was
+  a silent no-op. Initially wired into config; on consolidating PR #18 this was
+  superseded by removing the dead formatter feature entirely (see the
+  consolidation note below) — the flag, config key, and MCP arg are gone.
+- **MEDIUM** `meta_prompt.py` — `detect_stack` over-matched common English via
+  the inflection matcher (`nested`→typescript, `nodes`→javascript,
+  `pipes`→python, `expressed`→javascript) with no count threshold, injecting a
+  wrong tech stack into the LLM system prompt and template domain aliases.
+  Collision-prone short keywords (`nest`/`node`/`pip`/`express`) now require an
+  exact whole-word match.
+- **MEDIUM** `preferences.py` — `_FORMAT_SUFFIXES` required the output-format
+  hint at end-of-text, but later tier-0 rules (constraints, the `[Note: …]`
+  short-prompt hint) append after it, so for low-quality prompts the hint was
+  never at the end → `removes_format` learning was dead. Regex is now
+  line-bounded and matches the hint paragraph wherever it sits.
+- **LOW** `shell.py` — the Zsh/Bash/Fish IPC widget used `socat - UNIX-CONNECT:~/…`,
+  but a mid-argument `~` is expanded by neither the shell nor socat, so CWD
+  reports targeted a literal `~` path and never reached the daemon (which binds
+  the expanded `$HOME` path). Now uses `$HOME`.
+- **MEDIUM [documented, not fixed]** `daemon/daemon.py` / macOS — a SIGTERM from
+  `stop_daemon()` may not interrupt `CFRunLoopRun()` (pyobjc rarely returns from
+  it on signal delivery), so the in-process `_handle_term` handler may not fire
+  and graceful stop falls back to the ~3s SIGKILL path. Impact is a stop delay +
+  hard kill, **not** a leak (`stop_daemon` performs `_cleanup()` itself) and the
+  SIGKILL fallback bounds it. A proper fix (CFRunLoop signal source / wakeup-fd)
+  is macOS-runtime-specific and hard to unit-test; left as a known beta
+  limitation.
+
+Agent coverage that found **no** defects: providers / config / history /
+context (timeouts, httpx context-managers, malformed-response guards, secret
+redaction, SQLite parametrization & pruning, atomic `0o600` config write all
+verified sound).
+
+**Re-validation (second sub-agent pass over the round--6 fixes).** Four
+read-only agents adversarially re-checked each fix; all five code fixes verified
+correct and regression-free. Two further items surfaced:
+
+- **MEDIUM** `meta_prompt.py` — `react` is the same class of English-collision
+  keyword as `nest`/`node`/`pip`/`express` (`reacted`/`reacting` matched the
+  React stack) but was not in the no-inflect set. Added `react` to
+  `_NO_INFLECT_STACK_KEYWORDS` (exact `react`/`react.js` still detect). RED test
+  added.
+- **HIGH [RESOLVED by removal]** `formatter.py` was orphaned: imported only by
+  its own test, never by the engine or providers. `format_style` flowed into
+  dedup routing, the history row, and the reported JSON field, but **nothing
+  shaped the actual enhanced text by format** — `build_system_prompt` takes no
+  format argument and providers receive only `(prompt, system_prompt)`. This is
+  the exact dead feature that open **PR #18 (`fix/validation-round5`)** set out
+  to remove "per explicit user direction". Resolution (per user): consolidate
+  PR #18 into this branch and close it — remove `formatter.py`, the `--format`
+  flag, the `[provider] format_style` config key + validation + setup prompt,
+  and the MCP `output_format` arg. `EnhanceResult.format_style` is kept as a
+  vestigial `"auto"` and the nullable history column is kept (no DB migration).
+  Dedup keeps its provider/model route separation (a Claude result is the wrong
+  text for OpenAI regardless of format) but drops the now-meaningless
+  `format_style` filter dimension. Docs (README, USER_GUIDE, ARCHITECTURE,
+  MANUAL_TESTING, CLAUDE.md, config.example.toml) updated — which also fixes the
+  P2 Codex-bot review comment on PR #18 about leftover format references in
+  public docs.
+
+### Consolidation of PR #18 (formatter removal) — [DONE]
+
+PR #18 also bundled three correct non-formatter fixes, brought in here so closing
+it loses nothing, each with a RED regression test:
+
+- **HIGH** auto-enhance gate recorded every gated prompt as a confirmed
+  `accept`, polluting dedup/preference learning (it has no accept/reject
+  surface). `enhance()` gained `record: bool = True`; the gate calls
+  `enhance(record=False)`.
+- **HIGH** macOS `paste_result()` always returned `True` even when the synthetic
+  Cmd+V was dropped for lack of accessibility trust, so the daemon clobbered the
+  clipboard with the user's original. It now checks `check_accessibility()` and
+  returns `False` (text stays on the clipboard), mirroring X11/Wayland.
+- **LOW** `history.set_decision()` silently no-op'd on a pruned row; now
+  debug-logs when `rowcount == 0`.
+
+PR #18's P2 Codex review comment (leftover `output_format`/`format_style` in
+README/USER_GUIDE/ARCHITECTURE/config.example.toml) is resolved by the doc
+updates above. This branch supersedes PR #18.
+
+### -5. Sub-agent revalidation follow-up (2026-06-19) — 7 findings [RESOLVED]
+
+Independent read-only sub-agent validation found launch-readiness defects in
+the round--4 fixes. Each item is now covered by a RED regression test and a
+targeted GREEN run, followed by full lint/types/coverage/strict-warning gates:
+
+- **HIGH** `daemon/daemon.py` — PID identity accepted any process command line
+  containing the words `promptune` and `daemon`, so a reused PID could still be
+  killed. `_is_daemon_process()` now parses argv and accepts only real
+  `promptune daemon start` or `python -m promptune daemon start` command forms.
+- **MEDIUM** `engine.py` — template aliases did not match doubled-consonant
+  inflections such as `debugging`, so documented `intent: debug` templates could
+  miss natural prompts. Template keyword matching now mirrors the meta-prompt
+  inflection matcher.
+- **MEDIUM** `engine.py` / `dedup.py` — auto-format dedup used one static route
+  (`local`) even though default routing may record tier-0 or cloud fallback
+  results. Dedup now receives the full set of possible AI provider/model routes,
+  and true tier-0 entries remain universal by recorded `tier_used == 0`.
+- **MEDIUM** `mcp/server.py` — explicit empty `style=""` or `format_style=""`
+  bypassed validation. MCP validation now runs for any non-`None` override.
+- **MEDIUM** `.coveragerc-linux` — Linux coverage config also omitted shared
+  daemon modules (`ipc.py`, `prewarm.py`). Only platform-specific macOS modules
+  remain omitted for Linux validation.
+- **MEDIUM** `.github/workflows/release.yml` — manual branch dispatch could
+  publish artifacts when `PUBLISH_TO_PYPI` was true, and GitHub Release could
+  race PyPI publishing. Publish/release jobs are tag-gated, and GitHub Release
+  now depends on successful PyPI publish.
+- **LOW** `docs/MANUAL_TESTING.md` — auto-enhance manual tests still described
+  the old block-and-copy behavior. Docs now match the current hook contract:
+  exit 0 plus `additionalContext` JSON for low-quality prompts.
+
+### -4. Beta bug-hunt audit (2026-06-18) — 15 findings [RESOLVED]
+Parallel full-codebase audit plus local verification found and fixed launch-
+readiness defects across core routing, daemon lifecycle, tests, docs, and CI.
+All fixes landed with RED tests first, targeted GREEN runs, full coverage, and
+strict warning verification:
+
+- **HIGH** `engine.py` / `dedup.py` — `format_style="auto"` cache hits crossed
+  provider/model changes, so a Claude/XML-shaped cached result could be reused
+  after switching to OpenAI/Markdown. Auto-format dedup now filters by effective
+  provider/model.
+- **HIGH** `engine.py` / `templates.py` — documented `.prompts` values such as
+  `intent: debug` and `domain: python` never matched because the engine only
+  passed coarse `coding/general` labels. Template matching now accepts
+  documented intent aliases and stack/domain aliases, and template variables
+  reflect matched frontmatter when present.
+- **MEDIUM** `cli.py` / `mcp/server.py` — invalid style or format overrides were
+  accepted silently, dropping AI guidance. CLI now uses `click.Choice`; MCP tool
+  args validate against config vocab before calling the engine.
+- **MEDIUM** `tests/test_daemon/test_clipboard.py` — one sleep-duration test
+  touched real `pbcopy`/`pbpaste`, mutating the user's clipboard in elevated
+  runs. The test now mocks the clipboard write/read boundary.
+- **HIGH** `pyproject.toml` / `.coveragerc-linux` / CI — global coverage omit
+  hid macOS daemon modules even on macOS, while the report claimed their
+  coverage. The global omit is gone; Linux CI uses `.coveragerc-linux` only for
+  Linux's macOS-only imports.
+- **MEDIUM** `.github/workflows/release.yml` — release validation skipped the
+  Xvfb-backed X11 integration job. Release now runs the same X11 smoke matrix
+  before build.
+- **MEDIUM** `.github/workflows/release.yml` — release built artifacts without
+  validating the wheel users install. Build now runs `twine check`, installs the
+  built wheel into a temp venv, and smokes `promptune --version` plus
+  `python -m promptune --help`.
+- **MEDIUM** docs — unquoted `promptune[extra]` install hints broke in zsh.
+  README, user docs, manual testing, architecture docs, and MCP error text now
+  quote extras.
+- **MEDIUM** docs/CI — coverage gate drifted between README (89%) and CI/report
+  (85%). Docs/readiness tests now enforce one value.
+- **HIGH** `daemon/daemon.py` — `stop_daemon()` trusted a live PID without
+  process identity, risking SIGTERM/SIGKILL to an unrelated reused PID. Stop,
+  start, and status now verify a live promptune daemon command before trusting
+  the PID file.
+- **HIGH** `daemon/daemon.py` — a normal `hotkey.listen()` return skipped
+  cleanup, leaving PID/socket state and prewarm timer alive. `start_daemon()`
+  now cancels prewarm, stops the hotkey backend, and removes runtime files in a
+  `finally` block.
+- **MEDIUM** `daemon/prewarm.py` — `_RepeatingTimer` let callback exceptions
+  kill the daemon thread and surface `PytestUnhandledThreadExceptionWarning`.
+  The timer now logs callback failures and continues until cancelled.
+- **HIGH** `daemon/hotkey.py` — macOS event taps disabled by timeout/user input
+  were never re-enabled, so the global hotkey could silently die. Disabled tap
+  events now call `CGEventTapEnable(..., True)`.
+- **MEDIUM** `daemon/launchagent.py` — login item install did not create the log
+  parent directory referenced by the plist. Install now creates `LOG_FILE.parent`.
+- **P2** `daemon/ipc.py` — accurate macOS coverage exposed IPC at 88%, below the
+  per-module target. Added timeout, bind-failure, and malformed-response tests;
+  module coverage is now 93%.
 
 ### -3. Audit round 4 + Codex PR-bot review (2026-06-18) — 6 findings [RESOLVED]
 Fourth sub-agent pass plus 2 P2 comments the Codex GitHub bot left on PR #16.
@@ -244,12 +441,12 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 
 **Status:** Deferred — module coverage already at target. See TaskList task #6.
 
-### 8. Prewarm timer emits thread exception warnings (P2)
+### 8. ~~Prewarm timer emits thread exception warnings (P2)~~ [RESOLVED]
 **Severity:** Medium
 **Test:** `tests/test_daemon/test_prewarm.py::TestStartPrewarmTimer::test_cancel_stops_repeating_chain`
 **Symptom:** Full suite passes but emits 4 `PytestUnhandledThreadExceptionWarning` warnings.
 **Cause:** A repeating timer can call `prewarm_ollama()` after test cancellation; the test mock leaves `httpx.HTTPStatusError` as a non-exception object in that background path.
-**Fix pointer:** Tighten timer cancellation/test cleanup or harden the mocked `httpx` exception setup.
+**Fixed:** `_RepeatingTimer.run()` now catches/logs callback exceptions and continues until cancelled. Verified with `-W error::pytest.PytestUnhandledThreadExceptionWarning`.
 
 ---
 
@@ -257,22 +454,23 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 
 | Priority | Item | Status | Notes |
 |----------|------|--------|-------|
+| ~~P2~~ | ~~Dedup provider/model filter mismatch (finding -5)~~ | ✅ Done | Auto-format dedup allows all possible AI routes and true tier-0 entries |
 | ~~P0~~ | ~~Fix 33 ruff lint errors~~ | ✅ Done | 0 errors |
 | ~~P0~~ | ~~Improve `cli.py` coverage 67% → ≥90%~~ | ✅ Done | 98% |
 | ~~P1~~ | ~~Fix SQLite `ResourceWarning`~~ | ✅ Done | Idempotent close + lifecycle |
 | ~~P1~~ | ~~Improve `hotkey.py` 69% → ≥90%~~ | ✅ Done | 100% |
-| ~~P1~~ | ~~Improve `ipc.py` 82% → ≥90%~~ | ✅ Done | 91% |
-| ~~P1~~ | ~~Improve `daemon.py` 83% → ≥90%~~ | ✅ Done | 99% |
-| ~~P2~~ | ~~Improve `engine.py` 86% → ≥90%~~ | ✅ Done | 98% |
+| ~~P1~~ | ~~Improve `ipc.py` 82% → ≥90%~~ | ✅ Done | 93% |
+| ~~P1~~ | ~~Improve `daemon.py` 83% → ≥90%~~ | ✅ Done | 94% |
+| ~~P2~~ | ~~Improve `engine.py` 86% → ≥90%~~ | ✅ Done | 97% |
 | ~~P2~~ | ~~Improve `collectors.py` 85% → ≥90%~~ | ✅ Done | 100% |
 | ~~P2~~ | ~~Add `__main__.py` smoke test~~ | ✅ Done | 100% (runpy) |
 | ~~P2~~ | ~~Improve `templates.py` 89% → ≥90%~~ | ✅ Done | 93% |
 | ~~P1~~ | ~~Improve `gate.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `mcp/server.py` 53% → ≥90%~~ | ✅ Done | 100% |
 | P2 | Add missing PARTIAL test scenarios | Deferred | Task #6 |
-| P2 | Fix prewarm timer thread warning | Open | `test_cancel_stops_repeating_chain` background timer |
+| ~~P2~~ | ~~Fix prewarm timer thread warning~~ | ✅ Done | Timer callback exceptions contained; strict warning run clean |
 | ~~P3~~ | ~~Improve `linux_x11.py` 46% → ≥70%~~ | ✅ Done | 100% mocked + Xvfb CI |
-| ~~P3~~ | ~~Improve `linux_wayland.py` 51% → ≥70%~~ | ✅ Done | 95% mocked; hardware sign-off still manual |
+| ~~P3~~ | ~~Improve `linux_wayland.py` 51% → ≥70%~~ | ✅ Done | 96% mocked; hardware sign-off still manual |
 
 ---
 
@@ -291,3 +489,5 @@ After running verification, update:
 
 See `.github/workflows/ci.yml` for automated checks.
 Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97%).
+Linux CI uses `.coveragerc-linux` so macOS-only daemon modules are omitted only
+on Linux; local macOS coverage includes and measures those modules.

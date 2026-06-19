@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 _SCHEMA_VERSION = 1
 
@@ -208,13 +211,20 @@ class HistoryStore:
         preference learning act on the true outcome.
         """
         with self._lock:
-            self._conn.execute(
+            cursor = self._conn.execute(
                 """UPDATE enhancements
                    SET decision = ?, edit_result = ?
                    WHERE id = ?""",
                 (decision, edit_result, entry_id),
             )
             self._conn.commit()
+            if cursor.rowcount == 0:
+                # Row was pruned or never existed — the correction is lost.
+                # Log it so the silent no-op is at least observable.
+                _log.debug(
+                    "set_decision: no row with id=%s (already pruned?)",
+                    entry_id,
+                )
 
     def recent(
         self,

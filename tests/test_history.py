@@ -289,3 +289,8 @@ def test_set_decision_records_edit_result(store: HistoryStore) -> None:
     entries = store.recent(n=10)
     assert entries[0].decision == "edit"
     assert entries[0].edit_result == "the user's edited prompt"
+
+
+def test_set_decision_missing_row_is_noop(store: HistoryStore) -> None:
+    """Correcting a pruned/nonexistent row must not raise."""
+    store.set_decision(999_999, "reject", None)  # no row with this id

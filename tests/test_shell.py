@@ -360,6 +360,20 @@ class TestIPCReporting:
         assert "report_cwd" in script
         assert "socat" in script
 
+    def test_ipc_socket_path_uses_home_not_tilde(self) -> None:
+        """A `~` mid-argument (``socat - UNIX-CONNECT:~/...``) is not expanded by
+        the shell or by socat, so the widget would target a literal ``~`` path
+        and never reach the daemon, which binds the expanded $HOME path. The
+        snippet must use $HOME so CWD reporting actually works."""
+        for gen, key in [
+            (_generate_zsh_widget, "'^E'"),
+            (_generate_bash_widget, '"\\C-e"'),
+            (_generate_fish_widget, "\\ce"),
+        ]:
+            script = gen(key)
+            assert "UNIX-CONNECT:~" not in script
+            assert "$HOME" in script
+
     def test_ipc_is_nonblocking(self) -> None:
         """IPC line runs in background (&) and discards both stdout/stderr.
 

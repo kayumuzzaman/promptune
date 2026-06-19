@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -99,22 +100,26 @@ def match_template(
     project_root: Path | str,
     intent: str,
     domain: str,
+    intent_aliases: Iterable[str] | None = None,
+    domain_aliases: Iterable[str] | None = None,
 ) -> Template | None:
     """Find the best matching template for the given intent/domain."""
     templates = load_templates(project_root)
     if not templates:
         return None
 
+    intents = _ordered_values([intent, *(intent_aliases or [])])
+    domains = _ordered_values([domain, *(domain_aliases or [])])
     candidates: list[Template] = []
 
     for tpl in templates:
         if tpl.intent and tpl.domain:
-            if tpl.intent == intent and tpl.domain == domain:
+            if tpl.intent in intents and tpl.domain in domains:
                 candidates.append(tpl)
         elif tpl.intent:
-            if tpl.intent == intent:
+            if tpl.intent in intents:
                 candidates.append(tpl)
-        elif tpl.domain and tpl.domain == domain:
+        elif tpl.domain and tpl.domain in domains:
             candidates.append(tpl)
 
     if not candidates:
@@ -122,6 +127,11 @@ def match_template(
 
     candidates.sort(key=lambda t: (-t.specificity, t.filename))
     return candidates[0]
+
+
+def _ordered_values(values: Iterable[str]) -> set[str]:
+    """Return non-empty candidate values without duplicates."""
+    return {value for value in values if value}
 
 
 _PLACEHOLDER_RE = re.compile(r"\{\{([^{}]+)\}\}")

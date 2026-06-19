@@ -113,9 +113,6 @@ promptune enhance -s detailed "build a payment system"
 # Force a specific tier (0=rules only, 1=local LLM, 2=cloud API)
 promptune enhance --tier 0 "fix the login bug"
 
-# Force output format style
-promptune enhance --format markdown "explain kubernetes networking"
-
 # Skip the TUI, print directly to stdout
 promptune enhance --no-tui "add dark mode to my react app"
 
@@ -129,7 +126,7 @@ echo "build a REST API" | promptune enhance --no-tui
 promptune enhance --no-tui "your prompt" | pbcopy
 
 # Combine multiple flags
-promptune enhance -p openrouter -s detailed --format xml --no-tui "design a caching layer"
+promptune enhance -p openrouter -s detailed --no-tui "design a caching layer"
 ```
 
 **Flags:**
@@ -139,7 +136,6 @@ promptune enhance -p openrouter -s detailed --format xml --no-tui "design a cach
 | `--provider` | `-p` | Override default provider (claude, openai, openrouter) |
 | `--style` | `-s` | Override default style (minimal, balanced, detailed) |
 | `--tier` | | Force specific tier: 0 (rules only), 1 (local LLM), 2 (cloud API) |
-| `--format` | | Force output format: xml, markdown, plain |
 | `--no-tui` | | Print result directly, skip interactive TUI |
 | `--json` | | Output structured JSON with scores, tier, latency |
 
@@ -173,10 +169,10 @@ Start the MCP server for use with AI coding tools (Claude Code, Cursor, Codex, e
 promptune mcp
 ```
 
-Requires the optional MCP dependency: `pip install promptune[mcp]`
+Requires the optional MCP dependency: `pip install "promptune[mcp]"`
 
 The MCP server exposes two tools:
-- **`enhance_prompt`** — enhance a prompt using the 3-tier engine (accepts style, tier, format overrides)
+- **`enhance_prompt`** — enhance a prompt using the 3-tier engine (accepts style, tier overrides)
 - **`score_prompt_quality`** — score a prompt across 7 dimensions (returns total, intent, per-dimension detail)
 
 To use with Claude Code, add to your MCP config:
@@ -397,7 +393,7 @@ promptune daemon uninstall-login-item
 promptune daemon setup   # checks tools, shows install command
 
 # 2. Install Python extras
-pip install promptune[linux-daemon]
+pip install "promptune[linux-daemon]"
 
 # 3. Start the daemon
 promptune daemon start --foreground
@@ -525,7 +521,6 @@ Run `promptune config init` for the interactive setup wizard, or edit the file d
 ```toml
 [provider]
 default = "claude"                        # claude | openai | openrouter
-format_style = "auto"                     # auto | xml | markdown | plain
 model_claude = "claude-haiku-4-5-20251001"
 model_openai = "gpt-4o-mini"
 model_openrouter = "anthropic/claude-haiku-4.5"
@@ -833,4 +828,4 @@ The daemon does not support WSL (Windows Subsystem for Linux). Use the CLI direc
 - **OS:** macOS or Linux (X11 / Wayland)
 - **Shell:** Zsh, Bash, or Fish (for shell widget)
 - **API key:** At least one provider (Claude, OpenAI, or OpenRouter)
-- **Linux daemon extras:** `pip install promptune[linux-daemon]` for python-xlib, dbus-next, evdev
+- **Linux daemon extras:** `pip install "promptune[linux-daemon]"` for python-xlib, dbus-next, evdev

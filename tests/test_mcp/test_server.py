@@ -110,6 +110,48 @@ class TestMcpEnhanceTool:
             == "detailed"
         )
 
+    def test_enhance_rejects_invalid_style(self) -> None:
+        from promptune.config import ConfigError
+        from promptune.mcp.server import _tool_enhance
+
+        mock_cfg: dict[str, Any] = {
+            "enhancement": {"default_mode": "balanced"},
+            "provider": {},
+        }
+
+        with (
+            patch(
+                "promptune.mcp.server.load_config",
+                return_value=mock_cfg,
+            ),
+            patch("promptune.mcp.server.enhance") as mock_enhance,
+            pytest.raises(ConfigError, match="Invalid mode"),
+        ):
+            _tool_enhance("prompt", style="detialed")
+
+        mock_enhance.assert_not_called()
+
+    def test_enhance_rejects_empty_style(self) -> None:
+        from promptune.config import ConfigError
+        from promptune.mcp.server import _tool_enhance
+
+        mock_cfg: dict[str, Any] = {
+            "enhancement": {"default_mode": "balanced"},
+            "provider": {},
+        }
+
+        with (
+            patch(
+                "promptune.mcp.server.load_config",
+                return_value=mock_cfg,
+            ),
+            patch("promptune.mcp.server.enhance") as mock_enhance,
+            pytest.raises(ConfigError, match="Invalid mode"),
+        ):
+            _tool_enhance("prompt", style="")
+
+        mock_enhance.assert_not_called()
+
 
 class TestMcpScoreTool:
     """score tool returns correct structure."""
@@ -145,44 +187,6 @@ class TestMcpScoreTool:
         assert "score" in dim
         assert "weight" in dim
         assert "suggestion" in dim
-
-
-class TestEnhanceFormatStyleOverride:
-    """_tool_enhance respects format_style override (line 28)."""
-
-    def test_format_style_overrides_config(self) -> None:
-        from promptune.engine import EnhanceResult
-        from promptune.mcp.server import _tool_enhance
-
-        mock_result = MagicMock(spec=EnhanceResult)
-        mock_result.original = "x"
-        mock_result.enhanced = "y"
-        mock_result.score_before = _make_score(30)
-        mock_result.score_after = _make_score(70)
-        mock_result.tier_used = 0
-        mock_result.rules_applied = []
-        mock_result.rules_explained = []
-        mock_result.latency_ms = 5.0
-
-        mock_cfg: dict[str, Any] = {
-            "enhancement": {"default_mode": "balanced"},
-            "provider": {"format_style": "auto"},
-        }
-
-        with (
-            patch(
-                "promptune.mcp.server.load_config",
-                return_value=mock_cfg,
-            ),
-            patch(
-                "promptune.mcp.server.enhance",
-                return_value=mock_result,
-            ) as mock_enhance,
-        ):
-            _tool_enhance("prompt", format_style="xml")
-
-        call_cfg = mock_enhance.call_args[0][1]
-        assert call_cfg["provider"]["format_style"] == "xml"
 
 
 class TestRunServer:
@@ -269,12 +273,12 @@ class TestRunServer:
             # enhance_prompt tool should now be registered
             assert "enhance_prompt" in registered
             result = registered["enhance_prompt"](
-                "prompt", style="detailed", tier=2, output_format="xml"
+                "prompt", style="detailed", tier=2
             )
 
         assert result == {"enhanced": "ok"}
         mock_enhance.assert_called_once_with(
-            "prompt", style="detailed", tier=2, format_style="xml"
+            "prompt", style="detailed", tier=2
         )
 
     def test_registered_enhance_tool_auto_tier_passes_none(
@@ -313,13 +317,13 @@ class TestRunServer:
         ) as mock_enhance:
             mcp_server.run_server()
             registered["enhance_prompt"](
-                "prompt", style="balanced", tier=-1, output_format="auto"
+                "prompt", style="balanced", tier=-1
             )
 
-        # tier=-1 → None, format=auto → None; style passes through verbatim
-        # (an explicit "balanced" must not be collapsed to None/config default).
+        # tier=-1 → None; style passes through verbatim (an explicit "balanced"
+        # must not be collapsed to None/config default).
         mock_enhance.assert_called_once_with(
-            "prompt", style="balanced", tier=None, format_style=None
+            "prompt", style="balanced", tier=None
         )
 
     def test_registered_enhance_tool_passes_style_through(
@@ -358,11 +362,11 @@ class TestRunServer:
         ) as mock_enhance:
             mcp_server.run_server()
             registered["enhance_prompt"](
-                "prompt", style="detailed", tier=2, output_format="xml"
+                "prompt", style="detailed", tier=2
             )
 
         mock_enhance.assert_called_once_with(
-            "prompt", style="detailed", tier=2, format_style="xml"
+            "prompt", style="detailed", tier=2
         )
 
     def test_registered_score_tool_delegates_to_tool_score(

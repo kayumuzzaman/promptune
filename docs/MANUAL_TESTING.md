@@ -56,7 +56,7 @@ This document provides a comprehensive, step-by-step manual testing plan for eve
 - [ ] X11: `xclip` and `xdotool` installed (`sudo apt install xclip xdotool`)
 - [ ] Wayland: `wl-clipboard` and `ydotool` installed (`sudo apt install wl-clipboard ydotool`)
 - [ ] Optional: `notify-send` for desktop notifications (`sudo apt install libnotify-bin`)
-- [ ] Python Linux extras installed: `pip install promptune[linux-daemon]`
+- [ ] Python Linux extras installed: `pip install "promptune[linux-daemon]"`
 - [ ] (Wayland evdev fallback) User in `input` group: `groups | grep input`
 
 ### API Keys (needed for Tier 2 tests)
@@ -122,7 +122,7 @@ promptune --help
 promptune enhance --help
 ```
 
-- [ ] Lists all flags: `--provider`/`-p`, `--style`/`-s`, `--no-tui`, `--tier`, `--format`, `--json`
+- [ ] Lists all flags: `--provider`/`-p`, `--style`/`-s`, `--no-tui`, `--tier`, `--json`
 
 ### 2.5 Edge Case: Wrong Python Version
 
@@ -211,7 +211,6 @@ Accept provider and key, then answer `y` to advanced settings:
 
 - [ ] Enhancement style prompt appears with choices `minimal/balanced/detailed`, default `balanced`
 - [ ] Max tier prompt appears with choices `0/1/2`, default `2`
-- [ ] Format style prompt appears with choices `auto/xml/markdown/plain`, default `auto`
 - [ ] All chosen values are written to config file
 
 ### 3.4 Each Provider Path
@@ -364,7 +363,7 @@ promptune enhance --json "make a todo app"
 ```
 
 - [ ] Output is valid JSON
-- [ ] Contains fields: `original`, `enhanced`, `tier_used`, `latency_ms`, `score_before`, `score_after`, `format_style`, `rules_applied`
+- [ ] Contains fields: `original`, `enhanced`, `tier_used`, `latency_ms`, `score_before`, `score_after`, `rules_applied`
 - [ ] `tier_used` is `0` when max_tier is set to 0
 - [ ] `rules_applied` is a list of rule names
 
@@ -386,17 +385,6 @@ promptune enhance --no-tui --tier 0 "make a todo app"
 
 - [ ] Uses only Tier 0 rules (check with `--json` that `tier_used` is 0)
 
-### 5.8 Format Override
-
-```bash
-promptune enhance --no-tui --format xml "explain kubernetes networking"
-promptune enhance --no-tui --format markdown "explain kubernetes networking"
-promptune enhance --no-tui --format plain "explain kubernetes networking"
-```
-
-- [ ] All three commands succeed
-- [ ] JSON output shows the corresponding `format_style`
-
 ### 5.9 Provider Override
 
 ```bash
@@ -409,7 +397,7 @@ promptune enhance --no-tui -p openai "optimize this SQL query"
 ### 5.10 Combined Flags
 
 ```bash
-promptune enhance -s detailed --format xml --no-tui --tier 0 "design a caching layer"
+promptune enhance -s detailed --no-tui --tier 0 "design a caching layer"
 ```
 
 - [ ] All flags work together without conflict
@@ -990,45 +978,6 @@ promptune enhance --json "fix a bug"
 
 - [ ] Enhancement still works (no crash)
 - [ ] Context is null or empty in the result
-
----
-
-## 14. Provider-Specific Formatting
-
-### 14.1 Auto-Detection
-
-With `format_style = "auto"` in config:
-
-```bash
-# Claude provider (should auto-detect XML)
-promptune enhance --json -p claude --tier 2 "build an API"
-```
-
-- [ ] `format_style` is `"auto"` (the format is applied internally)
-
-### 14.2 Forced XML
-
-```bash
-promptune enhance --no-tui --format xml --tier 0 "build an API"
-```
-
-- [ ] Output may reflect XML-style structuring if applied by Tier 0/AI
-
-### 14.3 Forced Markdown
-
-```bash
-promptune enhance --no-tui --format markdown --tier 0 "build an API"
-```
-
-- [ ] Format style set in result metadata
-
-### 14.4 Forced Plain
-
-```bash
-promptune enhance --no-tui --format plain --tier 0 "build an API"
-```
-
-- [ ] Format style set in result metadata
 
 ---
 
@@ -1771,7 +1720,7 @@ pip install -e ".[dev,linux-daemon]"
 ### Prerequisites (Linux)
 
 - [ ] System dependencies installed (see Section 1 Linux prerequisites)
-- [ ] `pip install promptune[linux-daemon]` completed
+- [ ] `pip install "promptune[linux-daemon]"` completed
 - [ ] Not running under WSL (WSL is unsupported)
 
 ### Start / Stop / Status
@@ -1945,7 +1894,7 @@ XDG_SESSION_TYPE=wayland promptune daemon start --foreground
 *Requires: Linux X11 desktop, xclip, xdotool, python-xlib*
 
 ```bash
-pip install promptune[linux-daemon]
+pip install "promptune[linux-daemon]"
 XDG_SESSION_TYPE=x11 promptune daemon start --foreground
 ```
 
@@ -1969,7 +1918,7 @@ XDG_SESSION_TYPE=x11 promptune daemon start --foreground
 *Requires: Linux Wayland desktop, wl-clipboard, ydotool*
 
 ```bash
-pip install promptune[linux-daemon]
+pip install "promptune[linux-daemon]"
 XDG_SESSION_TYPE=wayland promptune daemon start --foreground
 ```
 
@@ -2114,7 +2063,7 @@ Quick sanity checks to run after fixing any bug. Each should pass in under 60 se
 
 ## 24. Auto-Enhance Gate
 
-**Purpose:** Verify the auto-enhance hook intercepts low-quality prompts and copies the enhanced version to clipboard.
+**Purpose:** Verify the auto-enhance hook injects enhanced prompt context for low-quality prompts.
 
 ### Prerequisites
 
@@ -2123,22 +2072,22 @@ Quick sanity checks to run after fixing any bug. Each should pass in under 60 se
 
 ### Test Steps
 
-1. Run `echo '{"prompt": "fix bug"}' | promptune gate` — expect exit 0 (below min_words, passes through)
-2. Run `echo '{"prompt": "make a simple todo app thing"}' | promptune gate` — expect exit 1 if PQS < 40 (enhanced, copied to clipboard)
-3. Run `echo '{"prompt": "Build a full-stack REST API with JWT authentication, PostgreSQL database, rate limiting, and comprehensive error handling"}' | promptune gate` — expect exit 0 (high-quality prompt passes through)
-4. Run `echo 'invalid json' | promptune gate` — expect exit 0 (graceful degradation)
+1. Run `echo '{"prompt": "fix bug"}' | promptune gate` — expect exit 0 with no stdout (below min_words, passes through)
+2. Run `echo '{"prompt": "make a simple todo app thing"}' | promptune gate` — expect exit 0 with hook JSON on stdout containing `hookSpecificOutput` and `additionalContext`
+3. Run `echo '{"prompt": "Build a full-stack REST API with JWT authentication, PostgreSQL database, rate limiting, and comprehensive error handling"}' | promptune gate` — expect exit 0 with no stdout (high-quality prompt passes through)
+4. Run `echo 'invalid json' | promptune gate` — expect exit 0 with no stdout (graceful degradation)
 5. Run `promptune doctor` — expect "Auto-enhance" line showing Claude Code hook status
 
 ### Edge Cases to Verify Manually
 
 - Prompt exactly at threshold (PQS = 40) should pass through
 - Config with `enabled = false` should always pass through
-- Missing clipboard tool (e.g. on headless server) should warn but not crash
+- Missing prompt key should pass through with no stdout
 
 ### Pass Criteria
 
 - [ ] Short prompts pass through (exit 0)
-- [ ] Low-quality prompts are blocked (exit 1) and enhanced version is on clipboard
+- [ ] Low-quality prompts return hook JSON with `additionalContext` and exit 0
 - [ ] High-quality prompts pass through (exit 0)
 - [ ] Invalid input is handled gracefully (exit 0)
 - [ ] Doctor shows hook status
@@ -2151,12 +2100,12 @@ Quick sanity checks to run after fixing any bug. Each should pass in under 60 se
 
 ### Prerequisites
 
-- `pip install promptune[mcp]` (installs `mcp>=1.0`)
+- `pip install "promptune[mcp]"` (installs `mcp>=1.0`)
 
 ### Test Steps
 
 1. Run `promptune mcp` — expect server to start on stdio (will wait for input; Ctrl+C to stop)
-2. Without mcp installed: `promptune mcp` — expect error message "MCP support requires: pip install promptune[mcp]" and exit 1
+2. Without mcp installed: `promptune mcp` — expect error message "MCP support requires: pip install \"promptune[mcp]\"" and exit 1
 3. Add to Claude Code MCP config and verify both tools appear: `enhance_prompt`, `score_prompt_quality`
 
 ### Pass Criteria

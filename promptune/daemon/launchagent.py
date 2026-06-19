@@ -80,6 +80,7 @@ def install_login_item() -> None:
     Creates the LaunchAgents directory if it does not exist.
     """
     PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     PLIST_PATH.write_text(generate_plist(), encoding="utf-8")
     subprocess.run(
         ["launchctl", "load", str(PLIST_PATH)],

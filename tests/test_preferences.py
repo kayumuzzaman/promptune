@@ -145,6 +145,35 @@ class TestEditPatterns:
         assert len(patterns) >= 1
         assert any(p.pattern_type == "removes_format" for p in patterns)
 
+    def test_format_removal_detected_when_hint_not_at_end(
+        self, store: HistoryStore
+    ) -> None:
+        """The tier-0 pipeline appends constraints / a [Note: ...] hint AFTER
+        the output-format instruction, so for the low-quality prompts that most
+        need enhancement the format hint is not at end-of-text. Its removal must
+        still be learned."""
+        enhanced = (
+            "Fix the bug\n\n"
+            "Respond with code and brief explanation.\n\n"
+            "Consider edge cases and error handling.\n\n"
+            "[Note: Adding more context and detail will improve results.]"
+        )
+        edited = (
+            "Fix the bug\n\n"
+            "Consider edge cases and error handling.\n\n"
+            "[Note: Adding more context and detail will improve results.]"
+        )
+        for _ in range(5):
+            store.record(_make_entry(
+                decision="edit",
+                enhanced=enhanced,
+                edit_result=edited,
+            ))
+
+        patterns = analyse_edit_patterns(store, min_samples=5)
+
+        assert any(p.pattern_type == "removes_format" for p in patterns)
+
     def test_role_removal_detected_when_role_only_in_some_edits(
         self, store: HistoryStore
     ) -> None:

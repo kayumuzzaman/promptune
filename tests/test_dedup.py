@@ -73,16 +73,20 @@ def _make_entry(
     edit_result: str | None = None,
     project_root: str = "/home/user/project",
     rules_applied: list[str] | None = None,
+    provider: str | None = None,
+    format_style: str = "xml",
+    model: str | None = None,
+    tier_used: int = 0,
 ) -> HistoryEntry:
     return HistoryEntry(
         original=original,
         enhanced=enhanced,
         decision=decision,
         edit_result=edit_result,
-        tier_used=0,
-        provider=None,
-        format_style="xml",
-        model=None,
+        tier_used=tier_used,
+        provider=provider,
+        format_style=format_style,
+        model=model,
         score_before=11,
         score_after=81,
         latency_ms=8.0,
@@ -111,35 +115,48 @@ class TestDedupCheck:
         assert isinstance(result, DedupHit)
         assert result.enhanced == "Diagnose and fix the authentication bug"
 
-    def test_format_style_filter_excludes_mismatch(
+    def test_tier0_result_bypasses_provider_filter(
         self, store: HistoryStore
     ) -> None:
-        """A cached result in another format must not be reused."""
-        store.record(_make_entry(  # recorded with format_style="xml"
+        """A tier-0 result (provider/model None) is provider-independent, so it
+        honours any request regardless of the provider/model filters."""
+        store.record(_make_entry(  # provider/model None => tier-0 origin
             original="fix the auth bug",
             enhanced="Diagnose and fix the authentication bug",
+            provider=None,
         ))
 
-        # Requesting markdown must NOT reuse the xml-format cached entry.
-        miss = dedup_check(
-            prompt="fix the auth bug",
-            project_root="/home/user/project",
-            store=store,
-            threshold=0.85,
-            format_style="markdown",
-        )
-        assert miss is None
-
-        # Same format reuses it; None means "any format" and also reuses.
-        for fmt in ("xml", None):
+        for prov in ("openai", "claude", None):
             hit = dedup_check(
                 prompt="fix the auth bug",
                 project_root="/home/user/project",
                 store=store,
                 threshold=0.85,
-                format_style=fmt,
+                provider=prov,
             )
-            assert hit is not None
+            assert hit is not None, f"tier-0 entry should match provider={prov}"
+
+    def test_provider_none_is_not_universal_for_ai_tiers(
+        self, store: HistoryStore
+    ) -> None:
+        """Only true tier-0 history is provider-independent."""
+        store.record(_make_entry(
+            original="fix the auth bug",
+            enhanced="AI result with missing provider metadata",
+            provider=None,
+            model=None,
+            tier_used=2,
+        ))
+
+        result = dedup_check(
+            prompt="fix the auth bug",
+            project_root="/home/user/project",
+            store=store,
+            threshold=0.85,
+            provider="claude",
+        )
+
+        assert result is None
 
     def test_miss_returns_none(self, store: HistoryStore) -> None:
         store.record(_make_entry(

@@ -81,6 +81,7 @@ def version() -> None:
 @click.option(
     "--style",
     "-s",
+    type=click.Choice(["minimal", "balanced", "detailed"]),
     default=None,
     help="Override default style.",
 )
@@ -97,13 +98,6 @@ def version() -> None:
     help="Force specific tier (0/1/2).",
 )
 @click.option(
-    "--format",
-    "format_style",
-    type=click.Choice(["xml", "markdown", "plain"]),
-    default=None,
-    help="Force output format style.",
-)
-@click.option(
     "--json",
     "json_output",
     is_flag=True,
@@ -115,7 +109,6 @@ def enhance_cmd(
     style: str | None,
     no_tui: bool,
     tier: int | None,
-    format_style: str | None,
     json_output: bool,
 ) -> None:
     """Enhance a prompt using AI."""
@@ -161,7 +154,6 @@ def enhance_cmd(
                 "score_after": round(
                     result.score_after.total
                 ),
-                "format_style": result.format_style,
                 "rules_applied": result.rules_applied,
                 "rules_explained": [
                     {"rule": name, "reason": desc}

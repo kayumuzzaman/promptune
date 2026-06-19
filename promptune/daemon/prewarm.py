@@ -89,7 +89,12 @@ class _RepeatingTimer(threading.Timer):
     def run(self) -> None:  # type: ignore[override]
         """Fire immediately, then re-fire every ``interval`` until stopped."""
         while not self._stop_event.is_set():
-            self.function(*self.args, **self.kwargs)
+            try:
+                self.function(*self.args, **self.kwargs)
+            except Exception:
+                logger.warning(
+                    "prewarm timer callback failed", exc_info=True
+                )
             if self._stop_event.wait(self.interval):
                 break
 

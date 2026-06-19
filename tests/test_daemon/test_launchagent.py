@@ -103,6 +103,21 @@ class TestInstallUninstall:
         content = plist_path.read_text(encoding="utf-8")
         assert "dev.promptune.daemon" in content
 
+    def test_install_creates_log_parent(self, tmp_path):
+        la = _import_module()
+        plist_path = tmp_path / "dev.promptune.daemon.plist"
+        log_file = tmp_path / "missing" / "promptune" / "daemon.log"
+
+        with (
+            patch.object(la, "PLIST_PATH", plist_path),
+            patch.object(la, "LOG_FILE", log_file),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            la.install_login_item()
+
+        assert log_file.parent.is_dir()
+
     def test_install_calls_launchctl_load(self, tmp_path):
         la = _import_module()
         plist_path = tmp_path / "dev.promptune.daemon.plist"
