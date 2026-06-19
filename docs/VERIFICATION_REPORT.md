@@ -12,8 +12,8 @@
 | Date | 2026-06-19 |
 | Branch | q/bug-hunt-beta-readiness |
 | Python | 3.14.3 |
-| Total Tests | 1156 |
-| Test Result | **1150 passed, 6 skipped, 0 failed** |
+| Total Tests | 1158 |
+| Test Result | **1152 passed, 6 skipped, 0 failed** |
 | Coverage | **97.46%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
@@ -66,7 +66,7 @@
 | `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
-| `promptune/daemon/daemon.py` | 255 | 9 | 96% | ✅ | executable-bound PID identity + normal-exit cleanup |
+| `promptune/daemon/daemon.py` | 258 | 9 | 97% | ✅ | executable-bound PID identity + normal-exit cleanup |
 | `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
 | `promptune/daemon/ipc.py` | 121 | 8 | 93% | ✅ | Was 82%; timeout/bind/JSON edge coverage |
 | `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
@@ -101,7 +101,7 @@
 | `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4136** | **105** | **97.46%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4139** | **105** | **97.46%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -117,6 +117,23 @@
 ---
 
 ## Known Issues
+
+### -9. PR #19 second repeated Codex validation loop (2026-06-19) — 1 finding [RESOLVED]
+
+The next PR validation plus code scan found one more daemon PID identity edge
+case. The fix landed with RED regression tests first, a targeted GREEN run,
+then full lint/type/actionlint/coverage/warning gates:
+
+- **HIGH** `daemon/daemon.py` — Python shebang console scripts were still
+  ambiguous in `ps -o command=` output. Lowercase `python /path/to/promptune
+  daemon start` could false-negative, while capitalized macOS framework
+  `Python ... worker.py /tmp/promptune daemon start` could false-positive.
+  `_is_daemon_process()` now separates non-Python console-script matching from
+  Python interpreter wrapper matching: it accepts `python /no-space/path/promptune
+  daemon start` and `python -m promptune daemon start`, but rejects arbitrary
+  later arguments containing `/tmp/promptune daemon start`. Regressions:
+  `test_is_daemon_process_accepts_python_interpreter_console_script` and
+  `test_is_daemon_process_rejects_capitalized_python_worker_arg`.
 
 ### -8. PR #19 repeated Codex validation loop (2026-06-19) — 2 findings [RESOLVED]
 

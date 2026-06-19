@@ -185,6 +185,27 @@ class TestPIDManagement:
         ):
             assert _is_daemon_process(12345) is True
 
+    def test_is_daemon_process_accepts_python_interpreter_console_script(
+        self,
+    ) -> None:
+        """Setuptools console scripts run as python /path/to/promptune."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.12",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/opt/promptune/.venv/bin/python3.12 "
+                    "/opt/promptune/.venv/bin/promptune daemon start "
+                    "--foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
     def test_is_daemon_process_rejects_bare_arg_subsequence(self) -> None:
         """A process that merely passes `promptune daemon start` as plain
         arguments (not as the program / -m target) is not our daemon."""
@@ -211,6 +232,27 @@ class TestPIDManagement:
                 "promptune.daemon.daemon._process_command",
                 return_value=(
                     "/usr/bin/python worker.py /tmp/promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_capitalized_python_worker_arg(
+        self,
+    ) -> None:
+        """Capitalized Python comm has the same false-positive boundary."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="Python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Library/Frameworks/Python.framework/Versions/3.14/"
+                    "Resources/Python.app/Contents/MacOS/Python worker.py "
+                    "/tmp/promptune daemon start"
                 ),
             ),
         ):

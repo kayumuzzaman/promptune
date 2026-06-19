@@ -137,15 +137,22 @@ def _process_name(pid: int) -> str | None:
 # on macOS: "/Users/Jane Doe/...", "Library/Application Support/...") cannot be
 # tokenised back into argv. The executable name from `ps -o comm=` supplies the
 # missing identity boundary: console-script form needs comm=promptune, module
-# form needs comm=python*, and args must still end with `daemon start`.
+# form needs comm=python*, and args must still end with `daemon start`. For
+# Python shebang wrappers, accept only the unambiguous no-space script path form
+# (`python /.../promptune daemon start`), not arbitrary later arguments.
 _PROMPTUNE_DAEMON_ARGS_RE = re.compile(
     r"(?:^|/)promptune\s+daemon\s+start(?:\s|$)"
 )
 _PYTHON_MODULE_DAEMON_ARGS_RE = re.compile(
     r"(?:^|\s)-m\s+promptune\s+daemon\s+start(?:\s|$)"
 )
-_STARTS_WITH_PYTHON_RE = re.compile(
-    r"^\S*python(?:\d+(?:\.\d+)?)?(?:\s|$)"
+_PYTHON_COMMAND_RE = re.compile(
+    r"^\S*python(?:\d+(?:\.\d+)?)?(?:\s|$)", re.IGNORECASE
+)
+_PYTHON_CONSOLE_SCRIPT_RE = re.compile(
+    r"^\S*python(?:\d+(?:\.\d+)?)?\s+"
+    r"(?:\S*/)?promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
 )
 
 
@@ -156,9 +163,13 @@ def _is_python_executable(name: str) -> bool:
 
 
 def _is_console_script_command(command: str) -> bool:
-    if _STARTS_WITH_PYTHON_RE.search(command):
+    if _PYTHON_COMMAND_RE.search(command):
         return False
     return _PROMPTUNE_DAEMON_ARGS_RE.search(command) is not None
+
+
+def _is_python_console_script_command(command: str) -> bool:
+    return _PYTHON_CONSOLE_SCRIPT_RE.search(command) is not None
 
 
 def _is_daemon_process(pid: int) -> bool:
@@ -176,6 +187,7 @@ def _is_daemon_process(pid: int) -> bool:
         return (
             _PYTHON_MODULE_DAEMON_ARGS_RE.search(command) is not None
             or _is_console_script_command(command)
+            or _is_python_console_script_command(command)
         )
     return False
 
