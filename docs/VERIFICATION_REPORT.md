@@ -150,9 +150,13 @@ lint/mypy/coverage gates.
   `tests/test_providers/test_base.py` (case normalization, unhinted URL, bare
   email untouched, linear-time guard).
 
-Also hardened (defensive, flagged twice): the private `ctx._protected_args`
-access in `_ConfigGroup` is now `getattr`-guarded so the positional-API-key
-rejection survives a future click that drops the attribute.
+Also resolved (private-API reliance, flagged across rounds): `_ConfigGroup`
+previously reached into Click's private `ctx._protected_args` (later
+`getattr`-guarded) to reject a positionally-passed API key without echoing it.
+It now overrides the **public** `resolve_command` instead — which fires on the
+stray positional before Click's default "No such command '<value>'" error can
+echo the secret — so there is no longer any reliance on Click internals or the
+deprecated public `protected_args`.
 
 **Codex PR #19 (merged) follow-up — 1 finding [RESOLVED]:** the Codex GitHub
 reviewer left a P1 on merged PR #19's `daemon/daemon.py`. When a pip/pipx

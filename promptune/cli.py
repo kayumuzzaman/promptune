@@ -285,21 +285,20 @@ def mcp_cmd() -> None:
 
 
 class _ConfigGroup(click.Group):
-    def parse_args(
+    def resolve_command(
         self, ctx: click.Context, args: list[str]
-    ) -> list[str]:
-        remaining = super().parse_args(ctx, args)
-        # Click <9 stashes the first positional (treated as a subcommand name)
-        # in the private ``_protected_args``; fold it into extra args so the
-        # callback rejects it (e.g. an API key mistakenly passed positionally)
-        # without echoing it. Click >=9 routes it straight to ``ctx.args``, so
-        # the getattr fallback keeps the rejection working there too.
-        protected = getattr(ctx, "_protected_args", None)
-        if ctx.params.get("set_key") and protected:
-            ctx.args = [*protected, *ctx.args]
-            ctx._protected_args = []
-            remaining = ctx.args
-        return remaining
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        # A positional token after ``--set-key`` is a misplaced API key value
+        # (a subcommand name slot, as far as Click is concerned). Reject it
+        # generically *before* Click's default "No such command '<value>'"
+        # error can echo the secret. This runs ahead of the group callback,
+        # and uses only public Click API (no reliance on Context internals).
+        if ctx.params.get("set_key"):
+            raise click.UsageError(
+                "API keys must be entered at the hidden prompt, "
+                "not passed as command arguments."
+            )
+        return super().resolve_command(ctx, args)
 
 
 @main.group(
@@ -343,14 +342,6 @@ def config(
         raise click.UsageError(
             "--set-key, --set-tier, and --reset are mutually exclusive."
         )
-
-    if ctx.args:
-        if set_key:
-            raise click.UsageError(
-                "API keys must be entered at the hidden prompt, "
-                "not passed as command arguments."
-            )
-        raise click.UsageError("Unexpected extra arguments.")
 
     config_path = _get_config_path()
 
