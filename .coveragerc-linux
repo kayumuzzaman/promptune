@@ -1,0 +1,15 @@
+[run]
+branch = false
+omit =
+    promptune/daemon/clipboard.py
+    promptune/daemon/hotkey.py
+    promptune/daemon/notify.py
+    promptune/daemon/launchagent.py
+    promptune/daemon/platform/macos.py
+
+[report]
+exclude_also =
+    if sys.platform
+    raise ImportError
+    if TYPE_CHECKING:
+    @(abc\.)?abstractmethod

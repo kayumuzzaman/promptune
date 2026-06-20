@@ -617,6 +617,48 @@ def test_tech_stack_malformed_package_json(
     assert result.frameworks == []
 
 
+def test_tech_stack_null_dependencies_preserves_languages(
+    tmp_path, mocker: MockerFixture
+) -> None:
+    """Valid package.json with null dependencies must not abort the collector.
+
+    Regression: ``{**pkg.get("dependencies", {})}`` raised TypeError when the
+    key is present but null (``.get`` returns None, not the default). The
+    exception propagated out of collect_tech_stack and lost the already
+    detected languages instead of just skipping framework detection.
+    """
+    (tmp_path / "package.json").write_text(
+        '{"name": "app", "dependencies": null, "devDependencies": null}'
+    )
+    mocker.patch(
+        "promptune.context.collectors._get_project_root",
+        return_value=tmp_path,
+    )
+
+    result = collect_tech_stack()
+
+    assert "javascript" in result.languages
+    assert result.frameworks == []
+
+
+def test_tech_stack_non_dict_dependencies_preserves_languages(
+    tmp_path, mocker: MockerFixture
+) -> None:
+    """A non-object dependencies value is ignored, languages still detected."""
+    (tmp_path / "package.json").write_text(
+        '{"name": "app", "dependencies": ["react"]}'
+    )
+    mocker.patch(
+        "promptune.context.collectors._get_project_root",
+        return_value=tmp_path,
+    )
+
+    result = collect_tech_stack()
+
+    assert "javascript" in result.languages
+    assert result.frameworks == []
+
+
 # --- pyproject.toml OSError ---
 
 

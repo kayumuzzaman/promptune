@@ -64,7 +64,17 @@ _STACK_KEYWORDS: dict[str, list[str]] = {
 }
 
 
-def _keyword_matches(text: str, kw: str) -> bool:
+# Stack keywords that are also the root of common English words. Matching their
+# inflections (e.g. "nest" -> "nested", "node" -> "nodes", "pip" -> "pipes",
+# "express" -> "expressed", "react" -> "reacted") would inject a wrong tech
+# stack into the LLM system prompt. detect_stack adds a tech on a single match
+# with no count threshold, so these must match the exact word only.
+_NO_INFLECT_STACK_KEYWORDS: frozenset[str] = frozenset(
+    {"nest", "node", "pip", "express", "react"}
+)
+
+
+def _keyword_matches(text: str, kw: str, *, inflect: bool = True) -> bool:
     """Whole-word keyword match that also accepts regular English inflections.
 
     Anchored at a word boundary (so "api" never matches inside "rapidly"), it
@@ -72,9 +82,14 @@ def _keyword_matches(text: str, kw: str) -> bool:
     ``-ing`` — including single-consonant doubling like ``debug`` -> ``debugging``
     and ``program`` -> ``programming``. It does not cover spelling-changing
     forms such as ``create`` -> ``creating``.
+
+    Pass ``inflect=False`` for short keywords that are roots of common English
+    words, to require an exact whole-word match (no plural/verb suffixes).
     """
     if not kw:
         return False
+    if not inflect:
+        return re.search(rf"\b{re.escape(kw)}\b", text) is not None
     last = re.escape(kw[-1])
     pattern = rf"\b{re.escape(kw)}(?:{last}?(?:ing|ed)|e?s)?\b"
     return re.search(pattern, text) is not None
@@ -110,7 +125,9 @@ def detect_stack(prompt: str) -> list[str]:
     found: list[str] = []
     for tech, keywords in _STACK_KEYWORDS.items():
         for kw in keywords:
-            if _keyword_matches(lower, kw):
+            if _keyword_matches(
+                lower, kw, inflect=kw not in _NO_INFLECT_STACK_KEYWORDS
+            ):
                 if tech not in found:
                     found.append(tech)
                 break

@@ -123,39 +123,6 @@ def test_enhance_tier_flag(mocker) -> None:
     assert result.exit_code == 0
 
 
-def test_enhance_format_flag(mocker) -> None:
-    """--format flag is accepted."""
-    mock_enhance = mocker.patch(
-        "promptune.cli.enhance"
-    )
-    mock_enhance.return_value = MagicMock(
-        original="test",
-        enhanced="enhanced test",
-        tier_used=0,
-        latency_ms=5,
-        score_before=MagicMock(total=10),
-        score_after=MagicMock(total=80),
-        rules_applied=[],
-        context=None,
-        format_style="markdown",
-        provider=None,
-        model=None,
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(
-        main,
-        [
-            "enhance",
-            "--format",
-            "markdown",
-            "--no-tui",
-            "test prompt",
-        ],
-    )
-    assert result.exit_code == 0
-
-
 def test_enhance_json_flag(mocker) -> None:
     """--json flag outputs structured JSON."""
     mock_enhance = mocker.patch(
@@ -1220,6 +1187,21 @@ def test_enhance_style_override(mocker):
         ],
     )
     assert result.exit_code == 0
+
+
+def test_enhance_rejects_invalid_style() -> None:
+    """--style rejects typos instead of silently dropping AI guidance."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "enhance", "--style", "detialed",
+            "--no-tui", "test",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid value for '--style'" in result.output
 
 
 # ── Config show / path commands ───────────────────────────────

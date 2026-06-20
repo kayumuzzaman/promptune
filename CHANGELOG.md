@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `engine.enhance()` now logs swallowed history/dedup/preferences and template-injection failures at `warning` level (was `debug`), surfacing silent best-effort feature loss without breaking graceful degradation
 - `promptune history` command — SQLite connection now properly closed via `try/finally` after each invocation, preventing resource leaks in long-running sessions
 - Test fixtures in `test_preferences` and `test_dedup` now teardown `HistoryStore` connections, eliminating `ResourceWarning: unclosed database` noise from the test suite
+- Daemon process-identity check (`_is_daemon_process`) now recognises a running daemon installed under a path containing spaces (e.g. macOS `Library/Application Support` or a user's full name); previously `stop` could orphan the real daemon and `start` could launch a duplicate. The check still rejects unrelated processes that merely pass `promptune daemon start` as arguments
+- Tech-stack detection no longer false-matches common English words via inflections — `nested`/`nodes`/`pipes`/`expressed`/`reacted` no longer report TypeScript/JavaScript/Python/React; exact mentions (`pip`, `node`, `nest`, `express`, `react`) still detect the stack
+- Preference learning now detects removal of the output-format instruction even when later tier-0 rules append text after it (constraints, the short-prompt `[Note: …]` hint); the `removes_format` signal was previously never learned for the low-quality prompts that most need it
+- Shell-widget daemon IPC snippet now references the socket via `$HOME` instead of a mid-argument `~` (which neither the shell nor socat expands), so per-directory CWD reporting from the Zsh/Bash/Fish widgets actually reaches the daemon
+- Auto-enhance gate now calls `enhance(record=False)` — it has no accept/reject surface, so it no longer records every gated prompt to history as a confirmed `accept` (which polluted dedup and preference learning with unconfirmed outcomes)
+- macOS `paste_result()` now returns `False` when accessibility permission is missing (the synthetic Cmd+V is silently dropped by the OS), so the daemon reports "paste manually" instead of clobbering the clipboard with the user's original — mirroring the X11/Wayland backends
+- `HistoryStore.set_decision()` now debug-logs when the target row was already pruned (`rowcount == 0`) instead of silently doing nothing
+- Daemon process-identity check now recognises free-threaded and ABI-suffixed CPython interpreters (e.g. `python3.13t`, `python3.13d`); a daemon launched under such a build was previously invisible to its own `start`/`stop`, risking a duplicate or an orphaned process
+- Hook installers (Claude Code, Codex) no longer raise `TypeError` when an existing config entry's `command` value is `null` or non-string; `is_installed()`/`uninstall()` tolerate the malformed value (reporting "not installed" / leaving it untouched), honouring the "never clobber a corrupt config" contract that `promptune doctor` and setup rely on
+- Tech-stack detection no longer discards already-detected languages when `package.json` has a present-but-null or non-object `dependencies`/`devDependencies` field (valid JSON); framework detection is skipped for the malformed section while language and package-manager detection still succeed
 
 ### Added
 
@@ -22,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional dependency: `pip install promptune[mcp]` (requires `mcp>=1.0`)
 
 #### Auto-Enhance Gate
-- `promptune gate` — hidden CLI command that reads a JSON payload from stdin (`{"prompt": "..."}`) and auto-enhances prompts scoring below a configurable PQS threshold; copies the enhanced version to the clipboard and exits 1 to block, or exits 0 to allow
+- `promptune gate` — hidden CLI command that reads a JSON payload from stdin (`{"prompt": "..."}`) and auto-enhances prompts scoring below a configurable PQS threshold; always exits 0 and, for a low-quality prompt, emits the enhanced version as `additionalContext` JSON on stdout for the host AI tool to inject (no clipboard, never blocks)
 - `[auto_enhance]` config section — `enabled`, `threshold` (default 60), `min_words` (default 5)
 - Hook installer framework (`promptune/hooks/`) with `HookInstaller` protocol for extensible AI tool support
 - Claude Code hook installer — detects `~/.claude/` and installs a `UserPromptSubmit` hook in `settings.json`
@@ -66,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Preference` dataclass — carries `rule_name`, `action` ("skip"/"keep"), `confidence`, and `sample_count`
 - `analyse_rule_preferences()` — counts accept/reject decisions per Tier 0 rule; emits `Preference(action="skip")` when reject rate > 60%, `Preference(action="keep")` when accept rate > 60%; skips rules with fewer than `min_samples` entries or conflicting signals (neither rate > 60%)
 - `EditPattern` dataclass — carries `pattern_type` ("removes_role"/"removes_format"), `description`, `frequency`, and `sample_count`
-- `analyse_edit_patterns()` — scans edit history for consistent removal of role-assignment prefixes (`_ROLE_PREFIXES`) or output-format suffixes (`_FORMAT_SUFFIXES`); returns patterns whose frequency exceeds 60% of edit entries; returns empty list when fewer than `min_samples` edits exist
+- `analyse_edit_patterns()` — scans edit history for consistent removal of role-assignment prefixes (`_ROLE_PREFIXES`) or output-format hint paragraphs (`_FORMAT_HINTS`); returns patterns whose frequency exceeds 60% of edit entries; returns empty list when fewer than `min_samples` edits exist
 - `tests/test_preferences.py` — 9 tests covering disliked/liked rule detection, insufficient samples, conflicting signals, empty history, role/format removal detection, and no-edits edge cases
 - `apply_rules()` in `tier0.py` — optional `skip_rules: set[str] | None` parameter; named rules in the set are silently bypassed in the pipeline, enabling preference-driven suppression without altering rule logic
 - `engine.enhance()` — preference learning integration: before scoring, reads history to build a `skip_rules` set via `analyse_rule_preferences()` and `analyse_edit_patterns()`; rules with >60% reject rate or consistent user removal are added to the skip set and passed to `apply_rules()`; gated by `preference_learning` config key; failures are silently swallowed so enhancement always proceeds
@@ -129,7 +139,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### 3-Tier Enhancement Engine
 - `promptune/engine.py` tier-based router — scores prompt, applies Tier 0 rules (always), then routes to Tier 1 (local LLM) or Tier 2 (cloud API) based on score threshold (70) with graceful fallback
 - `--tier` flag on `promptune enhance` — force specific tier (0/1/2)
-- `--format` flag on `promptune enhance` — force output format (xml/markdown/plain)
 - `--json` flag on `promptune enhance` — structured JSON output with scores, tier, latency
 
 #### 7-Dimension Quality Scoring
@@ -144,9 +153,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `promptune/context/collectors.py` — git branch/commits/modified files, shell history with error patterns and session intent, tech stack detection (languages/frameworks/package manager), environment flags (venv/container/CI/SSH)
 - `promptune/context/ranker.py` — priority-based context ranking within token budget
 - `promptune/context/sanitizer.py` — secret removal (API keys, tokens, passwords, high-entropy strings)
-
-#### Provider-Specific Formatting
-- `promptune/formatter.py` — auto-detects optimal format (XML/Markdown/Plain) based on model ID and parameter size; formats prompts with role, task, and requirements sections
 
 #### Local LLM Provider
 - `promptune/providers/local.py` — OpenAI-compatible local LLM support (Ollama, LM Studio, llama.cpp, vLLM, etc.)

@@ -157,6 +157,27 @@ class TestStartPrewarmTimer:
             finally:
                 timer.cancel()
 
+    def test_timer_callback_exception_does_not_kill_thread(self) -> None:
+        """Callback exceptions are contained inside the timer thread."""
+        calls = 0
+
+        def boom() -> None:
+            nonlocal calls
+            calls += 1
+            raise RuntimeError("transient prewarm failure")
+
+        timer = _RepeatingTimer(0.01, boom)
+        timer.start()
+        try:
+            time.sleep(0.05)
+            assert calls >= 1
+            assert timer.is_alive()
+        finally:
+            timer.cancel()
+            timer.join(timeout=1)
+
+        assert not timer.is_alive()
+
     @patch("promptune.daemon.prewarm.httpx")
     def test_cancel_stops_repeating_chain(
         self, mock_httpx: MagicMock

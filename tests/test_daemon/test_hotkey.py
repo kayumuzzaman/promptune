@@ -295,6 +295,29 @@ class TestEventCallback:
         assert fired == []
         assert result is event
 
+    @patch("promptune.daemon.hotkey.Quartz")
+    def test_disabled_event_tap_is_reenabled(self, mock_q):
+        import promptune.daemon.hotkey as mod
+
+        mock_q.kCGEventKeyDown = 10
+        mock_q.kCGEventTapDisabledByTimeout = 99
+        mock_q.kCGEventTapDisabledByUserInput = 100
+        fake_tap = MagicMock(name="tap")
+        old = mod._event_tap_ref
+        try:
+            mod._event_tap_ref = fake_tap
+            handler = mod._event_callback(lambda: None, 14, 0x40000)
+            event = MagicMock()
+
+            result = handler(None, 99, event, None)
+
+            assert result is event
+            mock_q.CGEventTapEnable.assert_called_once_with(
+                fake_tap, True
+            )
+        finally:
+            mod._event_tap_ref = old
+
 
 # -----------------------------------------------------------
 # TestStartRunLoop — lines 221-234

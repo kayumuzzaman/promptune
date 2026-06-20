@@ -33,8 +33,13 @@ _ROLE_PREFIXES = re.compile(
     r"^You are (?:a |an )?[\w\s/-]+\.\s*",
     re.IGNORECASE,
 )
-_FORMAT_SUFFIXES = re.compile(
-    r"\n\n(?:Respond |Structure |Provide )[\w\s/,-]+\.\s*$",
+# The tier-0 output-format hint is a "\n\n<sentence>." paragraph, but later
+# rules (constraints, the [Note: ...] short-prompt hint) append more paragraphs
+# after it, so it is not anchored to end-of-text. Match the hint paragraph
+# wherever it sits — bounded to a single line so it cannot greedily swallow the
+# trailing paragraphs.
+_FORMAT_HINTS = re.compile(
+    r"\n\n(?:Respond |Structure |Provide )[^\n]+\.",
     re.IGNORECASE,
 )
 
@@ -126,9 +131,9 @@ def analyse_edit_patterns(
             if not _ROLE_PREFIXES.search(edited):
                 removes_role += 1
 
-        if _FORMAT_SUFFIXES.search(enhanced):
+        if _FORMAT_HINTS.search(enhanced):
             has_format += 1
-            if not _FORMAT_SUFFIXES.search(edited):
+            if not _FORMAT_HINTS.search(edited):
                 removes_format += 1
 
     patterns: list[EditPattern] = []

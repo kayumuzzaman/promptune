@@ -251,6 +251,22 @@ class TestRunGateInjects:
         # Whole stdout must parse as a single JSON object, nothing else.
         json.loads(out)
 
+    def test_enhance_called_with_record_false(self, capsys) -> None:
+        """The gate must not record history (no accept/reject surface), or it
+        would pollute dedup/preference learning with unconfirmed outcomes."""
+        with (
+            patch(
+                "promptune.gate.score_prompt",
+                return_value=_make_score(30),
+            ),
+            patch(
+                "promptune.gate.enhance",
+                return_value=self._mock_result(),
+            ) as mock_enhance,
+        ):
+            run_gate("make a simple todo app thing", _BASE_CONFIG)
+        assert mock_enhance.call_args.kwargs.get("record") is False
+
     def test_gate_uses_displayed_total_not_pqs_overall(self, capsys) -> None:
         """Gate must compare ScoreResult.total (what `score` prints), not the
         compute_pqs overall, so a threshold calibrated from the CLI holds."""

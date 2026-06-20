@@ -108,7 +108,6 @@ class TestWriteConfig:
         config: dict = {
             "provider": {
                 "default": "openai",
-                "format_style": "markdown",
                 "model_claude": "claude-haiku-4-5-20251001",
                 "model_openai": "gpt-4o-mini",
                 "model_openrouter": "anthropic/claude-haiku-4.5",
@@ -128,7 +127,7 @@ class TestWriteConfig:
         write_config(config_path, config)
         loaded = load_config(config_path=config_path)
         assert loaded["provider"]["default"] == "openai"
-        assert loaded["provider"]["format_style"] == "markdown"
+        assert loaded["provider"]["model_openai"] == "gpt-4o-mini"
         assert loaded["api_keys"]["openai"] == "sk-test123"
         assert loaded["enhancement"]["max_tier"] == 1
         assert loaded["enhancement"]["default_mode"] == "detailed"
@@ -305,7 +304,6 @@ class TestPromptOptionalSettings:
         defaults: dict = {
             "default_mode": "balanced",
             "max_tier": 2,
-            "format_style": "auto",
         }
         with patch("click.confirm", return_value=False):
             result, accepted = _prompt_optional_settings(defaults)
@@ -316,28 +314,25 @@ class TestPromptOptionalSettings:
         defaults: dict = {
             "default_mode": "balanced",
             "max_tier": 2,
-            "format_style": "auto",
         }
         with (
             patch("click.confirm", return_value=True),
-            patch("click.prompt", side_effect=["detailed", 1, "xml"]),
+            patch("click.prompt", side_effect=["detailed", 1]),
             patch("click.echo"),
         ):
             result, accepted = _prompt_optional_settings(defaults)
         assert result["default_mode"] == "detailed"
         assert result["max_tier"] == 1
-        assert result["format_style"] == "xml"
         assert accepted is True
 
     def test_keeps_defaults_on_enter(self) -> None:
         defaults: dict = {
             "default_mode": "balanced",
             "max_tier": 2,
-            "format_style": "auto",
         }
         with (
             patch("click.confirm", return_value=True),
-            patch("click.prompt", side_effect=["balanced", 2, "auto"]),
+            patch("click.prompt", side_effect=["balanced", 2]),
             patch("click.echo"),
         ):
             result, accepted = _prompt_optional_settings(defaults)
@@ -593,7 +588,6 @@ class TestRunInteractiveSetup:
                     "gpt-4o",
                     "detailed",
                     1,
-                    "xml",
                     "http://localhost:11434",
                     "llama3:8b",
                 ],
@@ -632,7 +626,6 @@ class TestRunInteractiveSetup:
                     "claude-haiku-4-5-20251001",
                     "minimal",
                     0,
-                    "auto",
                 ],
             ),
             patch("click.confirm", return_value=True),
@@ -661,7 +654,6 @@ class TestRunInteractiveSetup:
                     "gpt-4o-mini",
                     "balanced",
                     1,
-                    "auto",
                 ],
             ),
             patch(

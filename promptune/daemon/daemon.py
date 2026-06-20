@@ -12,7 +12,9 @@ import contextlib
 import json
 import logging
 import os
+import re
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -95,6 +97,127 @@ def _is_running(pid: int) -> bool:
     return True
 
 
+def _process_command(pid: int) -> str | None:
+    """Return the process command line for *pid*, if it can be verified."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _process_name(pid: int) -> str | None:
+    """Return the executable basename for *pid*, if it can be verified."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    name = result.stdout.strip()
+    return os.path.basename(name) if name else None
+
+
+# Matches the daemon launch forms in `ps -o command=` output. `ps` space-joins
+# argv with no quoting, so an interpreter/script path containing a space (common
+# on macOS: "/Users/Jane Doe/...", "Library/Application Support/...") cannot be
+# tokenised back into argv. The executable name from `ps -o comm=` supplies the
+# missing identity boundary: console-script form needs comm=promptune, module
+# form needs comm=python*, and args must still end with `daemon start`. For
+# Python shebang wrappers, accept the unambiguous no-space script path form
+# (`python /.../promptune daemon start`) and the common spaced venv path form
+# (`python /.../venv/bin/promptune daemon start`), not arbitrary worker args.
+_PROMPTUNE_DAEMON_ARGS_RE = re.compile(
+    r"(?:^|/)promptune\s+daemon\s+start(?:\s|$)"
+)
+_PYTHON_EXECUTABLE_PATTERN = r"python(?:\d+(?:\.\d+)?(?:dm|d|t)?)?"
+_PYTHON_MODULE_EXECUTABLE_RE = re.compile(
+    rf"^(?:{_PYTHON_EXECUTABLE_PATTERN}|.*?/{_PYTHON_EXECUTABLE_PATTERN})"
+    r"(?=\s)",
+    re.IGNORECASE,
+)
+_PYTHON_MODULE_DAEMON_ARGS_RE = re.compile(
+    r"\s+-m\s+promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
+)
+_PYTHON_COMMAND_RE = re.compile(
+    rf"^(?:\S*/)?{_PYTHON_EXECUTABLE_PATTERN}(?:\s|$)", re.IGNORECASE
+)
+_PYTHON_CONSOLE_SCRIPT_RE = re.compile(
+    rf"^(?:\S*/)?{_PYTHON_EXECUTABLE_PATTERN}\s+"
+    r"(?:\S*/)?promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
+)
+_PYTHON_SPACED_CONSOLE_SCRIPT_RE = re.compile(
+    rf"^/.+/{_PYTHON_EXECUTABLE_PATTERN}\s+"
+    r"/.+/(?:bin|Scripts)/promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
+)
+_PYTHON_SCRIPT_ARG_RE = re.compile(
+    rf"^(?:\S*/)?{_PYTHON_EXECUTABLE_PATTERN}\s+\S+\.pyw?(?:\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _is_python_executable(name: str) -> bool:
+    return re.fullmatch(_PYTHON_EXECUTABLE_PATTERN, name.lower()) is not None
+
+
+def _is_python_module_command(command: str) -> bool:
+    match = _PYTHON_MODULE_EXECUTABLE_RE.match(command)
+    if match is None:
+        return False
+    return _PYTHON_MODULE_DAEMON_ARGS_RE.match(command, match.end()) is not None
+
+
+def _is_console_script_command(command: str) -> bool:
+    if _PYTHON_COMMAND_RE.search(command):
+        return False
+    return _PROMPTUNE_DAEMON_ARGS_RE.search(command) is not None
+
+
+def _is_python_console_script_command(command: str) -> bool:
+    if _PYTHON_CONSOLE_SCRIPT_RE.search(command):
+        return True
+    if _PYTHON_SCRIPT_ARG_RE.search(command):
+        return False
+    return _PYTHON_SPACED_CONSOLE_SCRIPT_RE.search(command) is not None
+
+
+def _is_daemon_process(pid: int) -> bool:
+    """Return True only when *pid* is a live promptune daemon process."""
+    if not _is_running(pid):
+        return False
+    command = _process_command(pid)
+    process_name = _process_name(pid)
+    if command is None or process_name is None:
+        return False
+    process_name_norm = process_name.lower()
+    if process_name_norm == "promptune":
+        return _is_console_script_command(command)
+    if _is_python_executable(process_name_norm):
+        return (
+            _is_python_module_command(command)
+            or _is_console_script_command(command)
+            or _is_python_console_script_command(command)
+        )
+    return False
+
+
 def _cleanup() -> None:
     """Remove *PID_FILE* and *SOCKET_PATH*, ignoring missing files."""
     for path in (PID_FILE, SOCKET_PATH):
@@ -110,7 +233,7 @@ def _cleanup() -> None:
 def get_status() -> DaemonStatus:
     """Return a :class:`DaemonStatus` reflecting current daemon health."""
     pid = _read_pid()
-    running = pid is not None and _is_running(pid)
+    running = pid is not None and _is_daemon_process(pid)
 
     uptime_seconds: float | None = None
     if running and PID_FILE.exists():
@@ -320,7 +443,7 @@ def start_daemon(
 ) -> None:
     """Start the promptune daemon."""
     existing_pid = _read_pid()
-    if existing_pid is not None and _is_running(existing_pid):
+    if existing_pid is not None and _is_daemon_process(existing_pid):
         _log.error("Daemon already running (PID %d)", existing_pid)
         return
 
@@ -430,10 +553,13 @@ def start_daemon(
         platform.hotkey.listen()
     except Exception:
         _log.exception("Daemon startup failed; cleaning up")
+        raise
+    finally:
         if prewarm_timer is not None:
             prewarm_timer.cancel()
+        with contextlib.suppress(Exception):
+            platform.hotkey.stop()
         _cleanup()
-        raise
 
 
 def stop_daemon() -> None:
@@ -443,7 +569,7 @@ def stop_daemon() -> None:
         _log.info("No PID file found; daemon not running")
         return
 
-    if not _is_running(pid):
+    if not _is_daemon_process(pid):
         _log.info("PID %d not running; cleaning up stale files", pid)
         _cleanup()
         return
@@ -461,8 +587,16 @@ def stop_daemon() -> None:
             return
         time.sleep(0.1)
 
-    with contextlib.suppress(OSError):
-        os.kill(pid, signal.SIGKILL)
+    if _is_daemon_process(pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            _cleanup()
+            _log.info("PID %d exited before force kill; cleaning up stale files", pid)
+            return
+        _cleanup()
+        _log.info("Daemon (PID %d) force-killed", pid)
+        return
 
     _cleanup()
-    _log.info("Daemon (PID %d) force-killed", pid)
+    _log.info("PID %d stale or reused before force kill; cleaning up files", pid)

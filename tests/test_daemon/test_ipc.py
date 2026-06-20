@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -374,6 +374,48 @@ class TestIPCServer:
                 client.recv(4096)
             client.close()
 
+    def test_bind_failure_closes_server_socket(
+        self, short_tmp: Path
+    ) -> None:
+        """start_ipc_server closes its socket when bind fails."""
+        sock_path = short_tmp / "bind_fail.sock"
+        state = DaemonState()
+        fake_sock = MagicMock()
+        fake_sock.bind.side_effect = OSError("bind failed")
+
+        with (
+            patch("promptune.daemon.ipc.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.ipc.socket.socket",
+                return_value=fake_sock,
+            ),
+            pytest.raises(OSError, match="bind failed"),
+        ):
+            start_ipc_server(state)
+
+        fake_sock.close.assert_called_once()
+
+    def test_client_invalid_json_response_returns_none(
+        self, short_tmp: Path
+    ) -> None:
+        """send_ipc_message ignores malformed JSON responses."""
+        sock_path = short_tmp / "bad_response.sock"
+        sock_path.write_text("")
+        fake_client = MagicMock()
+        fake_client.recv.return_value = b"not-json"
+
+        with (
+            patch("promptune.daemon.ipc.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.ipc.socket.socket",
+                return_value=fake_client,
+            ),
+        ):
+            result = send_ipc_message({"action": "status"})
+
+        assert result is None
+        fake_client.close.assert_called_once()
+
 
 def test_recv_message_accumulates_multiple_chunks() -> None:
     """A message split across recv() buffers is reassembled, not truncated."""
@@ -388,6 +430,18 @@ def test_recv_message_accumulates_multiple_chunks() -> None:
 
     data = _recv_message(conn)
     assert data == payload
-    import json
 
-    assert json.loads(data.decode())["action"] == "report_cwd"
+
+def test_recv_message_returns_partial_data_on_timeout() -> None:
+    """_recv_message stops cleanly when the peer stalls mid-message."""
+    import socket
+    from unittest.mock import MagicMock
+
+    from promptune.daemon.ipc import _recv_message
+
+    conn = MagicMock()
+    conn.recv.side_effect = [b'{"action":', socket.timeout]
+
+    data = _recv_message(conn)
+
+    assert data == b'{"action":'

@@ -289,25 +289,9 @@ def _prompt_optional_settings(
         show_default=False,
     )
 
-    fmt = click.prompt(
-        "  Format style [auto/xml/markdown/plain]",
-        type=click.Choice(
-            ["auto", "xml", "markdown", "plain"],
-            case_sensitive=False,
-        ),
-        default=_clamp_choice(
-            defaults["format_style"],
-            ["auto", "xml", "markdown", "plain"],
-            DEFAULT_CONFIG["provider"]["format_style"],
-        ),
-        show_choices=False,
-        show_default=False,
-    )
-
     return {
         "default_mode": str(mode),
         "max_tier": int(tier),
-        "format_style": str(fmt),
     }, True
 
 
@@ -410,7 +394,6 @@ def run_interactive_setup(
             "default_mode"
         ],
         "max_tier": max_tier_default,
-        "format_style": existing["provider"]["format_style"],
     }
     optional, advanced_accepted = _prompt_optional_settings(
         optional_defaults,
@@ -435,9 +418,6 @@ def run_interactive_setup(
     config["enhancement"]["max_tier"] = _max_tier_for_key_state(
         optional["max_tier"], api_key
     )
-    config["provider"]["format_style"] = optional[
-        "format_style"
-    ]
     if local_llm_settings is not None:
         config["local_llm"].update(local_llm_settings)
 

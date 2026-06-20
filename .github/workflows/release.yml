@@ -35,10 +35,10 @@ jobs:
         run: mypy promptune/
 
       - name: Tests with coverage
-        run: pytest --cov=promptune --cov-report=term-missing --cov-fail-under=85
+        run: pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-config=.coveragerc-linux --cov-fail-under=85
 
   build:
-    needs: validate
+    needs: [validate, linux-integration]
     runs-on: ubuntu-latest
 
     steps:
@@ -51,10 +51,20 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install build
+        run: pip install build twine
 
       - name: Build sdist and wheel
         run: python -m build
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - name: Wheel install smoke
+        run: |
+          python -m venv .dist-smoke
+          .dist-smoke/bin/python -m pip install dist/*.whl
+          .dist-smoke/bin/promptune --version
+          .dist-smoke/bin/python -m promptune --help
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -62,12 +72,36 @@ jobs:
           name: dist
           path: dist/
 
-  release:
+  # PyPI publish via OIDC trusted publishing (no API token stored).
+  # GATED OFF: this job is SKIPPED unless the repo variable PUBLISH_TO_PYPI == 'true'
+  #   (Settings -> Secrets and variables -> Actions -> Variables -> New variable).
+  # Before enabling, do the one-time PyPI setup: add a pending publisher at
+  # pypi.org -> Publishing  (owner=kayumuzzaman, repo=promptune,
+  # workflow=release.yml, environment=pypi).
+  publish:
     needs: build
     runs-on: ubuntu-latest
-    # Gated: only cut a GitHub Release when publishing is enabled, so a stray
-    # tag can't create a release pointing at a version that isn't on PyPI.
-    if: ${{ vars.PUBLISH_TO_PYPI == 'true' }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true' }}
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    # Gated: only cut a GitHub Release after PyPI publish succeeds, so a stray
+    # manual branch dispatch cannot publish artifacts or create a release.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true' }}
 
     steps:
       - name: Download build artifacts
@@ -82,26 +116,28 @@ jobs:
           generate_release_notes: true
           files: dist/*
 
-  # PyPI publish via OIDC trusted publishing (no API token stored).
-  # GATED OFF: this job is SKIPPED unless the repo variable PUBLISH_TO_PYPI == 'true'
-  #   (Settings -> Secrets and variables -> Actions -> Variables -> New variable).
-  # Before enabling, do the one-time PyPI setup: add a pending publisher at
-  # pypi.org -> Publishing  (owner=kayumuzzaman, repo=promptune,
-  # workflow=release.yml, environment=pypi).
-  publish:
-    needs: build
+  linux-integration:
     runs-on: ubuntu-latest
-    if: ${{ vars.PUBLISH_TO_PYPI == 'true' }}
-    environment: pypi
-    permissions:
-      id-token: write
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
 
     steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xclip xdotool wl-clipboard libxkbcommon0
+
+      - name: Install package (with Linux daemon extras)
+        run: pip install -e ".[dev,linux-daemon]"
+
+      - name: X11 integration tests (Xvfb)
+        run: xvfb-run -a pytest -m x11 -p no:cacheprovider

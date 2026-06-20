@@ -41,7 +41,7 @@ jobs:
       - name: Tests with coverage
         # Linux CI: macOS-only daemon tests self-skip; -m "not linux" excludes
         # real-hardware X11/Wayland integration tests (see pyproject markers).
-        run: pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-fail-under=85
+        run: pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-config=.coveragerc-linux --cov-fail-under=85
 
   linux-integration:
     # Real-display X11 integration: runs the X11 backend against a virtual

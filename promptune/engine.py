@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,12 @@ from promptune.tier0 import apply_rules
 
 _log = logging.getLogger(__name__)
 
+_TEMPLATE_INTENT_ALIASES: dict[str, list[str]] = {
+    "debug": ["debug", "bug", "crash", "error", "failure", "fix"],
+    "build": ["build", "create", "implement", "develop", "add"],
+    "refactor": ["refactor", "rewrite", "migrate"],
+}
+
 
 @dataclass
 class EnhanceResult:
@@ -63,7 +70,7 @@ class EnhanceResult:
     rules_applied: list[str]
     rules_explained: list[tuple[str, str]]
     context: Any  # ContextFingerprint | None — added in Task 6
-    format_style: str
+    format_style: str  # vestigial; always "auto" (provider formatting removed)
     provider: str | None  # null for Tier 0
     model: str | None  # null for Tier 0
     # Row id of the history record written for this enhancement, so an
@@ -85,6 +92,46 @@ def _detect_project_root() -> str:
     except Exception:
         pass
     return str(Path.cwd())
+
+
+def _template_intent_aliases(prompt: str) -> list[str]:
+    """Return template-specific intent labels promised in docs."""
+    lower = prompt.lower()
+    aliases: list[str] = []
+    for intent, keywords in _TEMPLATE_INTENT_ALIASES.items():
+        if any(_template_keyword_matches(lower, kw) for kw in keywords):
+            aliases.append(intent)
+    return aliases
+
+
+def _template_keyword_matches(text: str, keyword: str) -> bool:
+    last = re.escape(keyword[-1])
+    pattern = rf"\b{re.escape(keyword)}(?:{last}?(?:ing|ed)|e?s)?\b"
+    return re.search(pattern, text) is not None
+
+
+def _dedup_provider_model_routes(
+    cfg: dict[str, Any],
+) -> set[tuple[str | None, str | None]] | None:
+    """Return the effective AI routes needed for provider/model cache safety.
+
+    A cached result from one provider/model is the wrong text for another, so
+    auto-tier dedup is scoped to the routes this config could actually take.
+    """
+    max_tier = cfg["enhancement"].get("max_tier", 0)
+    if max_tier == 0:
+        return set()
+    routes: set[tuple[str | None, str | None]] = set()
+    if (
+        cfg["local_llm"].get("enabled", False)
+        and max_tier >= 1
+    ):
+        routes.add(("local", cfg["local_llm"].get("model", "")))
+    if max_tier >= 2:
+        provider = cfg["provider"]["default"]
+        model = cfg["provider"].get(f"model_{provider}", "")
+        routes.add((provider, model))
+    return routes
 
 
 def get_registry() -> ProviderRegistry:
@@ -219,8 +266,15 @@ def enhance(
     config: dict[str, Any],
     provider_override: str | None = None,
     tier_override: int | None = None,
+    record: bool = True,
 ) -> EnhanceResult:
-    """Enhance a prompt using tier-based routing."""
+    """Enhance a prompt using tier-based routing.
+
+    When *record* is False the enhancement is not written to history. The
+    auto-enhance gate uses this: it has no accept/reject surface, so recording
+    every gated prompt as a confirmed "accept" would pollute dedup and
+    preference learning with outcomes the user never confirmed.
+    """
     start = time.perf_counter()
 
     cfg = copy.deepcopy(config)
@@ -266,13 +320,14 @@ def enhance(
                     and tier_override is None
                     and provider_override is None
                 ):
+                    dedup_routes = _dedup_provider_model_routes(cfg)
                     hit = dedup_check(
                         prompt=prompt,
                         project_root=project_root,
                         store=_store,
                         threshold=dedup_cfg.get("dedup_threshold", 0.85),
                         window=dedup_cfg.get("dedup_window", 50),
-                        format_style=cfg["provider"]["format_style"],
+                        provider_model_routes=dedup_routes,
                     )
                     if hit is not None:
                         latency_ms = (time.perf_counter() - start) * 1000
@@ -288,7 +343,7 @@ def enhance(
                             rules_applied=[],
                             rules_explained=[],
                             context=None,
-                            format_style=cfg["provider"]["format_style"],
+                            format_style="auto",
                             provider=None,
                             model=None,
                         )
@@ -363,11 +418,17 @@ def enhance(
 
     # Template injection — match .prompts/ template and add to system prompt
     try:
-        matched_tpl = match_template(project_root, intent, domain)
+        matched_tpl = match_template(
+            project_root,
+            intent,
+            domain,
+            intent_aliases=_template_intent_aliases(prompt),
+            domain_aliases=stack,
+        )
         if matched_tpl is not None:
             tpl_vars: dict[str, str] = {
-                "intent": intent,
-                "domain": domain,
+                "intent": matched_tpl.intent or intent,
+                "domain": matched_tpl.domain or domain,
                 "project_root": project_root,
             }
             if context_fp is not None:
@@ -467,14 +528,14 @@ def enhance(
     # was always wired, the write side never was. Best-effort: a history failure
     # must never break enhancement.
     history_id: int | None = None
-    if history_enabled:
+    if history_enabled and record:
         history_id = _record_enhancement(
             history_cfg,
             original=prompt,
             enhanced=enhanced,
             tier_used=tier_used,
             provider=provider_name,
-            format_style=cfg["provider"]["format_style"],
+            format_style="auto",
             model=model_name,
             score_before=round(score_before.total),
             score_after=round(score_after.total),
@@ -493,7 +554,7 @@ def enhance(
         rules_applied=tier0_result.rules_applied,
         rules_explained=tier0_result.rules_explained,
         context=context_fp,
-        format_style=cfg["provider"]["format_style"],
+        format_style="auto",
         provider=provider_name,
         model=model_name,
         history_id=history_id,

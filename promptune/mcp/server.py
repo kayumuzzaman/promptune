@@ -9,23 +9,33 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from promptune.config import load_config
+from promptune.config import (
+    VALID_MODES,
+    ConfigError,
+    load_config,
+)
 from promptune.engine import enhance
 from promptune.scorer import score_prompt
+
+
+def _validate_choice(value: str, valid: set[str], label: str) -> None:
+    if value not in valid:
+        raise ConfigError(
+            f"Invalid {label} '{value}'. "
+            f"Must be one of: {', '.join(sorted(valid))}"
+        )
 
 
 def _tool_enhance(
     prompt: str,
     style: str | None = None,
     tier: int | None = None,
-    format_style: str | None = None,
 ) -> dict[str, Any]:
     """Enhance a prompt using the 3-tier engine."""
     cfg = copy.deepcopy(load_config())
-    if style:
+    if style is not None:
+        _validate_choice(style, VALID_MODES, "mode")
         cfg["enhancement"]["default_mode"] = style
-    if format_style:
-        cfg["provider"]["format_style"] = format_style
 
     result = enhance(prompt, cfg, tier_override=tier)
     return {
@@ -66,7 +76,7 @@ def run_server() -> None:
         from mcp.server.fastmcp import FastMCP
     except ImportError as e:
         raise ImportError(
-            "MCP support requires: pip install promptune[mcp]"
+            'MCP support requires: pip install "promptune[mcp]"'
         ) from e
 
     mcp = FastMCP("promptune")
@@ -76,7 +86,6 @@ def run_server() -> None:
         prompt: str,
         style: str = "balanced",
         tier: int = -1,
-        output_format: str = "auto",
     ) -> dict[str, Any]:
         """Enhance a prompt using AI (3-tier: rules, local LLM, cloud).
 
@@ -84,10 +93,8 @@ def run_server() -> None:
             prompt: The prompt text to enhance.
             style: Enhancement style: minimal, balanced, or detailed.
             tier: Force tier (-1=auto, 0=rules, 1=local, 2=cloud).
-            output_format: Output format: auto, xml, markdown, or plain.
         """
         tier_override = tier if tier >= 0 else None
-        fmt = output_format if output_format != "auto" else None
         # Pass the requested style through verbatim. Previously an explicit
         # style="balanced" was collapsed to None — indistinguishable from "not
         # set" — so a client asking for balanced silently got the configured
@@ -96,7 +103,6 @@ def run_server() -> None:
             prompt,
             style=style,
             tier=tier_override,
-            format_style=fmt,
         )
 
     @mcp.tool()

@@ -145,6 +145,14 @@ def _event_callback(
     """Return a CGEventTap callback that fires *callback* when the hotkey matches."""
 
     def _handler(proxy, event_type, event, refcon):  # type: ignore[no-untyped-def]
+        if event_type in (
+            Quartz.kCGEventTapDisabledByTimeout,
+            Quartz.kCGEventTapDisabledByUserInput,
+        ):
+            if _event_tap_ref is not None:
+                Quartz.CGEventTapEnable(_event_tap_ref, True)
+            return event
+
         if event_type == Quartz.kCGEventKeyDown:
             # Ignore OS key-repeat events fired while the hotkey is held; only
             # the initial press should trigger one enhancement run.

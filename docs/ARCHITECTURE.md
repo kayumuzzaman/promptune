@@ -20,8 +20,6 @@
 ├─────────────┤
 │ providers/  │  API adapters — Claude, OpenAI, OpenRouter, local LLM
 ├─────────────┤
-│ formatter.py│  Provider-specific output formatting (XML, Markdown, Plain)
-├─────────────┤
 │  history.py │  SQLite-backed enhancement history with statistics
 ├─────────────┤
 │   dedup.py  │  TF-based cosine similarity — detects near-duplicate prompts
@@ -189,7 +187,7 @@ CLI flags → environment variables → auto-downgrade → config file → defau
 
 ### MCP Server
 
-`mcp/server.py` wraps `engine.enhance()` and `scorer.score_prompt()` as MCP tools using FastMCP (optional dependency: `pip install promptune[mcp]`). The server runs on stdio transport — AI tools launch it as a subprocess. Two tools are exposed: `enhance_prompt` (with style/tier/format overrides) and `score_prompt_quality`. The `mcp` package is import-guarded; missing dependency produces a clear error message.
+`mcp/server.py` wraps `engine.enhance()` and `scorer.score_prompt()` as MCP tools using FastMCP (optional dependency: `pip install "promptune[mcp]"`). The server runs on stdio transport — AI tools launch it as a subprocess. Two tools are exposed: `enhance_prompt` (with style/tier overrides) and `score_prompt_quality`. The `mcp` package is import-guarded; missing dependency produces a clear error message.
 
 ### Preference Learning
 

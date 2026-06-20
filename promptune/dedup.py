@@ -64,16 +64,20 @@ def dedup_check(
     store: HistoryStore,
     threshold: float = 0.85,
     window: int = 50,
-    format_style: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    provider_model_routes: set[tuple[str | None, str | None]] | None = None,
 ) -> DedupHit | None:
     """Check if a similar prompt was recently enhanced.
 
     Returns DedupHit if a match is found above threshold,
     None otherwise. Skips prompts shorter than 3 words.
 
-    When *format_style* is given, only entries produced with the same format are
-    considered — a cached result in another format wouldn't honour the current
-    request. Pass ``None`` to match regardless of format.
+    When *provider* or *model* are given, entries must also match those
+    effective routing options — a cached result from a different provider/model
+    is the wrong text for this request. A tier-0 result is provider-independent,
+    so it is treated as a universal match and never excluded by these filters.
+    Pass ``None`` to disable a filter.
     """
     tokens = tokenize(prompt)
     if len(tokens) < 3:
@@ -89,8 +93,19 @@ def dedup_check(
     for entry in entries:
         if entry.decision == "reject":
             continue
-        if format_style is not None and entry.format_style != format_style:
-            continue
+        # Tier-0 results are provider-independent, so they honour any request
+        # regardless of the provider/model filters.
+        is_tier0 = entry.tier_used == 0
+        if not is_tier0:
+            if provider_model_routes is not None and (
+                entry.provider,
+                entry.model,
+            ) not in provider_model_routes:
+                continue
+            if provider is not None and entry.provider != provider:
+                continue
+            if model is not None and entry.model != model:
+                continue
 
         sim = cosine_similarity(prompt, entry.original)
         is_edit = entry.decision == "edit" and bool(entry.edit_result)

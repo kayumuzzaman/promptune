@@ -46,6 +46,29 @@ def test_detect_stack_ignores_english_go() -> None:
     assert "go" in detect_stack("update the go.mod and add a goroutine")
 
 
+def test_detect_stack_ignores_english_inflections() -> None:
+    """Short, collision-prone stack keywords must not match common English.
+
+    `nest`/`node`/`pip`/`express` are roots of everyday words; with no count
+    threshold a single inflected match (e.g. "nested" -> typescript) injects a
+    wrong tech stack into the LLM system prompt and template domain aliases.
+    """
+    assert "typescript" not in detect_stack("fix the nested loop in Python")
+    assert "javascript" not in detect_stack("traverse all the graph nodes")
+    assert "python" not in detect_stack("connect the unix pipes between stages")
+    assert "javascript" not in detect_stack("clearly expressed the requirements")
+    assert "react" not in detect_stack("the page reacted slowly to the click")
+
+
+def test_detect_stack_still_matches_exact_short_keywords() -> None:
+    """Exact-word forms of the collision-prone keywords still detect the stack."""
+    assert "python" in detect_stack("install it with pip")
+    assert "javascript" in detect_stack("run it under node")
+    assert "typescript" in detect_stack("build it with nest")
+    assert "javascript" in detect_stack("use express for the server")
+    assert "react" in detect_stack("build the UI in react")
+
+
 def test_detect_intent_word_boundary() -> None:
     """Intent keywords match whole words, not substrings."""
     from promptune.meta_prompt import detect_intent

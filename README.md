@@ -231,9 +231,6 @@ promptune enhance -s detailed "build a payment system"
 # Force a specific tier (0=rules only, 1=local LLM, 2=cloud API)
 promptune enhance --tier 0 "fix the login bug"
 
-# Force output format
-promptune enhance --format markdown "explain kubernetes networking"
-
 # Skip TUI, print enhanced prompt directly to stdout
 promptune enhance --no-tui "add dark mode to my react app"
 
@@ -247,7 +244,7 @@ echo "build a REST API" | promptune enhance --no-tui
 promptune enhance --no-tui "refactor the user service" | pbcopy
 
 # Combine flags
-promptune enhance -p openrouter -s detailed --format xml --no-tui "design a caching layer"
+promptune enhance -p openrouter -s detailed --no-tui "design a caching layer"
 ```
 
 **All flags:**
@@ -257,7 +254,6 @@ promptune enhance -p openrouter -s detailed --format xml --no-tui "design a cach
 | `--provider` | `-p` | Override default provider (claude, openai, openrouter) |
 | `--style` | `-s` | Override enhancement style (minimal, balanced, detailed) |
 | `--tier` | | Force specific tier: 0 (rules only), 1 (local LLM), 2 (cloud API) |
-| `--format` | | Force output format: xml, markdown, plain |
 | `--no-tui` | | Print result directly to stdout, skip interactive TUI |
 | `--json` | | Output structured JSON with scores, tier, latency |
 
@@ -365,7 +361,7 @@ _Claude Code calling the `enhance` tool, then acting on the refined prompt:_
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
-| `enhance_prompt` | `prompt` (str), `style` = `balanced`, `tier` = `-1` (auto), `output_format` = `auto` | Enhanced prompt, tier used, before/after scores |
+| `enhance_prompt` | `prompt` (str), `style` = `balanced`, `tier` = `-1` (auto) | Enhanced prompt, tier used, before/after scores |
 | `score_prompt_quality` | `prompt` (str) | Total PQS, detected intent, per-dimension breakdown + suggestions |
 
 Requires the MCP extra:
@@ -554,7 +550,7 @@ Key sections:
 
 | Section | Controls |
 |---------|----------|
-| `[provider]` | Default provider, per-provider model, format style |
+| `[provider]` | Default provider and per-provider model |
 | `[api_keys]` | Claude / OpenAI / OpenRouter keys |
 | `[enhancement]` | `max_tier`, default style, dedup, preference learning |
 | `[local_llm]` | Ollama / OpenAI-compatible host + model (Tier 1) |
@@ -579,13 +575,13 @@ Key sections:
 pip install -e ".[dev]"
 
 # Full check (lint + types + tests), as CI runs it
-ruff check . && mypy promptune/ && pytest -m "not linux" --cov=promptune --cov-report=term-missing
+ruff check . && mypy promptune/ && pytest -m "not linux" --cov=promptune --cov-report=term-missing --cov-fail-under=85
 
 # Tests only
 pytest -m "not linux" -v
 ```
 
-CI runs on Linux (Python 3.12 and 3.13). macOS-only daemon tests self-skip there, and `-m "not linux"` excludes the real-hardware X11/Wayland integration tests. Coverage gate: ≥ 89%.
+CI runs on Linux (Python 3.12 and 3.13). macOS-only daemon tests self-skip there, and `-m "not linux"` excludes the real-hardware X11/Wayland integration tests. Coverage gate: ≥ 85%.
 
 ## Roadmap
 

@@ -223,6 +223,177 @@ def test_engine_dedup_bypassed_on_explicit_override(
     )
 
 
+def test_engine_auto_dedup_separates_provider_model(
+    mock_config: dict, tmp_path, mocker: MockerFixture
+) -> None:
+    """format_style=auto cache hits must not cross provider/model changes."""
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["local_llm"]["enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+
+    claude = mocker.MagicMock()
+    claude.enhance.return_value = "<task>Claude XML result</task>"
+    openai = mocker.MagicMock()
+    openai.enhance.return_value = "## Task\nOpenAI Markdown result"
+    factory = mocker.patch(
+        "promptune.engine._create_cloud_provider",
+        side_effect=[claude, openai],
+    )
+    prompt = "debug the python authentication failure in detail"
+
+    first = enhance(prompt, mock_config, tier_override=2)
+    mock_config["provider"]["default"] = "openai"
+    second = enhance(prompt, mock_config)
+
+    assert first.provider == "claude"
+    assert second.tier_used == 2
+    assert second.provider == "openai"
+    assert second.enhanced == "## Task\nOpenAI Markdown result"
+    assert factory.call_count == 2
+
+
+def test_engine_auto_dedup_matches_tier0_result_under_local_enabled(
+    mock_config: dict, tmp_path, mocker: MockerFixture
+) -> None:
+    """A tier-0 result (provider=None) must still dedup when the config would
+    otherwise route to local LLM.
+
+    Regression guard: the auto-format dedup route filter used to return
+    provider="local" from static config while a high-scoring prompt stayed at
+    tier 0 (provider=None recorded), so the cache never matched and dedup was
+    inert for any prompt that didn't reach an AI tier.
+    """
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["local_llm"]["enabled"] = True
+    mock_config["enhancement"]["max_tier"] = 2
+    mock_config["enhancement"]["preference_learning"] = False
+    # A prompt that scores ≥ 70 so it never leaves tier 0, recording
+    # provider=None/model=None even though local_llm is enabled.
+    prompt = (
+        "Implement a Python function that parses JSON configuration files "
+        "safely with detailed error handling and comprehensive test coverage"
+    )
+
+    first = enhance(prompt, mock_config)
+    assert first.tier_used == 0
+    assert first.provider is None  # tier 0 records no provider
+
+    # Same prompt again → must be served from the dedup cache.
+    second = enhance(prompt, mock_config)
+    assert second.tier_used == -1, "tier-0 result was not deduplicated"
+
+
+def test_engine_auto_dedup_matches_cloud_fallback_under_local_enabled(
+    mock_config: dict, tmp_path, mocker: MockerFixture
+) -> None:
+    """Local-enabled auto routing may still record a cloud fallback result."""
+    db = tmp_path / "history.db"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["local_llm"]["enabled"] = True
+    mock_config["enhancement"]["max_tier"] = 2
+    mock_config["enhancement"]["preference_learning"] = False
+    prompt = "debug Python authentication timeout in production logs"
+
+    local = mocker.patch(
+        "promptune.engine._try_tier1",
+        side_effect=ProviderError("local down"),
+    )
+    cloud = mocker.patch(
+        "promptune.engine._try_tier2",
+        return_value=(
+            "<task>Diagnose the Python authentication timeout.</task>",
+            "claude",
+            mock_config["provider"]["model_claude"],
+        ),
+    )
+
+    first = enhance(prompt, mock_config)
+    second = enhance(prompt, mock_config)
+
+    assert first.tier_used == 2
+    assert second.tier_used == -1
+    assert local.call_count == 1
+    assert cloud.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("max_tier", "local_enabled"),
+    [
+        (0, True),
+        (1, False),
+    ],
+)
+def test_engine_auto_dedup_does_not_reuse_ai_result_when_only_tier0_possible(
+    mock_config: dict,
+    tmp_path,
+    mocker: MockerFixture,
+    max_tier: int,
+    local_enabled: bool,
+) -> None:
+    """AI cache entries must not satisfy a config that can only return tier 0."""
+    from promptune.history import HistoryEntry, HistoryStore
+
+    db = tmp_path / "history.db"
+    prompt = "debug the python authentication failure in detail"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["enhancement"]["max_tier"] = max_tier
+    mock_config["local_llm"]["enabled"] = local_enabled
+    mock_config["enhancement"]["preference_learning"] = False
+    mocker.patch("promptune.engine._detect_project_root", return_value="/project")
+
+    with HistoryStore(db_path=db) as store:
+        store.record(
+            HistoryEntry(
+                original=prompt,
+                enhanced="Cloud cached result",
+                decision="accept",
+                edit_result=None,
+                tier_used=2,
+                provider="claude",
+                format_style="auto",
+                model=mock_config["provider"]["model_claude"],
+                score_before=20,
+                score_after=90,
+                latency_ms=8.0,
+                rules_applied=[],
+                context_json=None,
+                project_root="/project",
+            )
+        )
+
+    result = enhance(prompt, mock_config)
+
+    assert result.tier_used == 0
+    assert result.enhanced != "Cloud cached result"
+
+
+def test_dedup_routes_keep_empty_model_to_match_recorded_entries() -> None:
+    """Blanked models must stay "" in routes to match recorded history.
+
+    Regression guard: the route side used to normalise an empty model to None
+    (``model or None``) while the recording side keeps "" (the raw config
+    value). dedup.py compares ``(entry.provider, entry.model)`` against the
+    route set verbatim, so a None-normalised route ``(provider, None)`` never
+    matched the recorded ``(provider, "")`` entry — silently excluding the
+    daemon's own cache entry.
+    """
+    from promptune.engine import _dedup_provider_model_routes
+
+    cfg = {
+        "provider": {"default": "claude", "model_claude": ""},
+        "local_llm": {"enabled": True, "model": ""},
+        "enhancement": {"max_tier": 2},
+    }
+
+    routes = _dedup_provider_model_routes(cfg)
+
+    assert routes == {("claude", ""), ("local", "")}
+    assert ("claude", None) not in routes
+    assert ("local", None) not in routes
+
+
 def test_engine_no_record_when_history_disabled(
     mock_config: dict, tmp_path
 ) -> None:
@@ -517,6 +688,48 @@ def test_engine_template_injection(
 
     assert isinstance(result, EnhanceResult)
     assert result.tier_used == 0
+
+
+def test_engine_template_matches_documented_debug_python(
+    mocker: MockerFixture, mock_config: dict, tmp_path
+) -> None:
+    """Documented debug/python templates match a Python debugging prompt."""
+    prompts_dir = tmp_path / ".prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "debug-python.md").write_text(
+        "---\n"
+        "intent: debug\n"
+        "domain: python\n"
+        "---\n"
+        "PYTHON DEBUG TEMPLATE",
+        encoding="utf-8",
+    )
+    captured: dict[str, str] = {}
+
+    def fake_tier2(
+        prompt: str, system_prompt: str, config: dict
+    ) -> tuple[str, str, str]:
+        captured["system_prompt"] = system_prompt
+        return "AI enhanced", "claude", config["provider"]["model_claude"]
+
+    mock_config["local_llm"]["enabled"] = False
+    mock_config["enhancement"]["dedup_enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+    mock_config["context"] = {
+        "use_git": False,
+        "use_shell_history": False,
+        "use_stack_detection": False,
+    }
+    mocker.patch(
+        "promptune.engine._detect_project_root",
+        return_value=str(tmp_path),
+    )
+    mocker.patch("promptune.engine._try_tier2", side_effect=fake_tier2)
+
+    result = enhance("debugging the Python authentication flow", mock_config)
+
+    assert result.tier_used == 2
+    assert "PYTHON DEBUG TEMPLATE" in captured["system_prompt"]
 
 
 def test_engine_no_template_dir_works(

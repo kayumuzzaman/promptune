@@ -74,22 +74,6 @@ markers = [
     "wayland: Wayland integration tests requiring a real Wayland session + portal/ydotool. Manual/hardware only (not in CI). Also carry the 'linux' marker. Select with: pytest -m wayland",
 ]
 
-[tool.coverage.run]
-branch = false
-# macOS-only daemon modules: import-guarded to darwin and exercised only by
-# macOS-gated tests, so they cannot be measured on the Linux CI runner. They
-# are verified on macOS (tests still run) and via docs/MANUAL_TESTING.md.
-# Omitting them keeps the coverage gate meaningful and platform-independent.
-omit = [
-    "promptune/daemon/clipboard.py",
-    "promptune/daemon/hotkey.py",
-    "promptune/daemon/notify.py",
-    "promptune/daemon/ipc.py",
-    "promptune/daemon/prewarm.py",
-    "promptune/daemon/launchagent.py",
-    "promptune/daemon/platform/macos.py",
-]
-
 [tool.coverage.report]
 exclude_also = [
     "if sys.platform",

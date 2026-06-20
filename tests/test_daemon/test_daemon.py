@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,8 +14,12 @@ import pytest
 from promptune.daemon.daemon import (
     _cleanup,
     _enhancing,
+    _is_daemon_process,
+    _is_python_executable,
     _is_running,
     _on_hotkey,
+    _process_command,
+    _process_name,
     _read_pid,
     _write_pid,
     get_status,
@@ -45,6 +51,360 @@ class TestPIDManagement:
 
     def test_is_running_true_for_self(self) -> None:
         assert _is_running(os.getpid()) is True
+
+    def test_process_command_does_not_hide_unexpected_errors(self) -> None:
+        with (
+            patch(
+                "promptune.daemon.daemon.subprocess.run",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            _process_command(12345)
+
+    def test_process_name_does_not_hide_unexpected_errors(self) -> None:
+        with (
+            patch(
+                "promptune.daemon.daemon.subprocess.run",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            _process_name(12345)
+
+    def test_process_helpers_return_none_for_ps_failures(self) -> None:
+        with patch(
+            "promptune.daemon.daemon.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("ps", 2),
+        ):
+            assert _process_command(12345) is None
+            assert _process_name(12345) is None
+
+    def test_is_daemon_process_rejects_argument_text_match(self) -> None:
+        """A reused PID is not ours just because argv mentions promptune daemon."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value="/usr/bin/python worker.py --note 'promptune daemon'",
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_accepts_promptune_daemon_start(self) -> None:
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="promptune",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value="/venv/bin/promptune daemon start --foreground",
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_space_in_path_console_script(
+        self,
+    ) -> None:
+        """A daemon installed under a path with a space is still recognised.
+
+        macOS paths routinely contain spaces ("Application Support", a user's
+        full name). `ps -o command=` space-joins argv, so naive shlex/tokenise
+        splits the path itself and false-negatives the real daemon — causing
+        stop_daemon() to orphan it and start_daemon() to launch a duplicate.
+        """
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="promptune",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Users/Jane Doe/Library/Application Support/venv/bin/"
+                    "promptune daemon start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_space_in_path_module_form(self) -> None:
+        """The `python -m promptune daemon start` form (plist/systemd) too."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Users/Jane Doe/.venv/bin/python -m promptune daemon "
+                    "start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_capitalized_python_comm(self) -> None:
+        """macOS framework builds can report Python with a capital P."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="Python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Library/Frameworks/Python.framework/Versions/3.14/bin/"
+                    "python3 -m promptune daemon start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_python_comm_console_script(
+        self,
+    ) -> None:
+        """Shebang console scripts can report Python as the executable."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.14",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Users/Jane Doe/Library/Application Support/venv/bin/"
+                    "promptune daemon start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_python_interpreter_console_script(
+        self,
+    ) -> None:
+        """Setuptools console scripts run as python /path/to/promptune."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.12",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/opt/promptune/.venv/bin/python3.12 "
+                    "/opt/promptune/.venv/bin/promptune daemon start "
+                    "--foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_accepts_python_console_script_space_path(
+        self,
+    ) -> None:
+        """Python shebang wrappers can point at promptune under a spaced path."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="Python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Library/Frameworks/Python.framework/Versions/3.14/"
+                    "Resources/Python.app/Contents/MacOS/Python "
+                    "/Users/Jane Doe/Library/Application Support/venv/bin/"
+                    "promptune daemon start --foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_daemon_process_rejects_bare_arg_subsequence(self) -> None:
+        """A process that merely passes `promptune daemon start` as plain
+        arguments (not as the program / -m target) is not our daemon."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value="/usr/bin/grep promptune daemon start log.txt",
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_python_worker_slash_promptune_arg(
+        self,
+    ) -> None:
+        """Python workers are not daemons just because an arg names promptune."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/python worker.py /tmp/promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_capitalized_python_worker_arg(
+        self,
+    ) -> None:
+        """Capitalized Python comm has the same false-positive boundary."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="Python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Library/Frameworks/Python.framework/Versions/3.14/"
+                    "Resources/Python.app/Contents/MacOS/Python worker.py "
+                    "/tmp/promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_non_python_module_arg(self) -> None:
+        """Only Python's `-m promptune daemon start` form is a daemon."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="some-tool",
+                create=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/some-tool --module -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_slash_promptune_argument(self) -> None:
+        """A non-daemon process can pass a path containing promptune words."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="grep",
+                create=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/grep /tmp/promptune daemon start log.txt"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_python_module_words_as_args(self) -> None:
+        """Only the process executable can be Python for `-m promptune`."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="grep",
+                create=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/grep python -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_python_worker_reused_pid_module_arg(
+        self,
+    ) -> None:
+        """A Python worker that passes `-m promptune` is not the daemon."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.13t",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/python3.13t worker.py -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_spaced_python_worker_module_arg(
+        self,
+    ) -> None:
+        """A spaced Python worker is not a daemon due to later module args."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Users/Jane Doe/.venv/bin/python worker.py "
+                    "/usr/bin/python -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_accepts_free_threaded_python_comm(
+        self,
+    ) -> None:
+        """Free-threaded/ABI-suffixed interpreters (python3.13t) count."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.13t",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/opt/.venv/bin/python3.13t -m promptune daemon start "
+                    "--foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_python_executable_accepts_abi_suffixes(self) -> None:
+        """ABI suffixes (free-threaded t, debug d/dm) are recognised."""
+        assert _is_python_executable("python3.13t")
+        assert _is_python_executable("python3.13d")
+        assert _is_python_executable("python3.13dm")
+        assert _is_python_executable("python3.12")
+        assert _is_python_executable("python")
+        # A non-interpreter name merely starting with "python" is rejected.
+        assert not _is_python_executable("pythonista")
+        assert not _is_python_executable("python3.13foo")
 
     def test_cleanup_removes_files(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
@@ -89,6 +449,10 @@ class TestDaemonStatus:
         with (
             patch("promptune.daemon.daemon.PID_FILE", pid_file),
             patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
         ):
             status = get_status()
             assert status.running is True
@@ -400,9 +764,23 @@ class TestStartDaemon:
     def test_already_running_exits_early(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
         pid_file.write_text(str(os.getpid()))
-        with patch("promptune.daemon.daemon.PID_FILE", pid_file):
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            # A verified live promptune daemon must short-circuit start before
+            # any platform detection. Without this mock, _is_daemon_process()
+            # runs a real `ps` on the test's own PID, correctly reports "not a
+            # daemon", and start_daemon() would fall through to a real
+            # get_platform()/hotkey.listen() that blocks the suite forever.
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
+            patch("promptune.daemon.daemon.get_platform") as mock_get_platform,
+        ):
             start_daemon(foreground=True)
-            # Should log error and return without calling get_platform
+
+        # Early return: platform detection (and thus hotkey.listen) never runs.
+        mock_get_platform.assert_not_called()
 
     def test_platform_error_exits_early(self, tmp_path: Path) -> None:
         from promptune.daemon.platform import PlatformError
@@ -444,7 +822,7 @@ class TestStartDaemon:
         ):
             start_daemon(foreground=True)
 
-        assert pid_file.exists()
+        assert not pid_file.exists()
         mock_platform.hotkey.register.assert_called_once()
         mock_platform.hotkey.listen.assert_called_once()
 
@@ -509,6 +887,51 @@ class TestStartDaemon:
 
         mock_prewarm.assert_called_once()
 
+    def test_normal_event_loop_exit_cleans_up_runtime_files_and_timer(
+        self, tmp_path: Path
+    ) -> None:
+        """A foreground daemon whose listener returns still tears down state."""
+        pid_file = tmp_path / "daemon.pid"
+        sock_path = tmp_path / "promptune.sock"
+        log_file = tmp_path / "daemon.log"
+        sock_path.write_text("")
+
+        mock_platform = MagicMock()
+        mock_platform.hotkey.check_conflict.return_value = False
+        mock_platform.hotkey.listen.return_value = None
+        mock_timer = MagicMock()
+
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch("promptune.daemon.daemon.LOG_FILE", log_file),
+            patch(
+                "promptune.daemon.daemon.get_platform",
+                return_value=mock_platform,
+            ),
+            patch("promptune.daemon.daemon.load_config", return_value={
+                "daemon": {"hotkey": "ctrl+shift+e"},
+                "local_llm": {
+                    "enabled": True,
+                    "host": "http://localhost:11434",
+                    "model": "qwen2.5:3b",
+                },
+            }),
+            patch("promptune.daemon.daemon.start_ipc_server"),
+            patch("promptune.daemon.daemon.signal.signal"),
+            patch(
+                "promptune.daemon.prewarm.start_prewarm_timer",
+                return_value=mock_timer,
+            ),
+            patch("sys.platform", "linux"),
+        ):
+            start_daemon(foreground=True)
+
+        mock_timer.cancel.assert_called_once()
+        mock_platform.hotkey.stop.assert_called_once()
+        assert not pid_file.exists()
+        assert not sock_path.exists()
+
 
 # ---------------------------------------------------------------------------
 # TestStopDaemon
@@ -534,6 +957,27 @@ class TestStopDaemon:
         assert not pid_file.exists()
         assert not sock_path.exists()
 
+    def test_live_unrelated_pid_is_treated_as_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """PID reuse must not make stop_daemon signal an unrelated process."""
+        pid_file = tmp_path / "daemon.pid"
+        sock_path = tmp_path / "promptune.sock"
+        pid_file.write_text("12345")
+        sock_path.write_text("")
+
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch("promptune.daemon.daemon.os.kill") as mock_kill,
+        ):
+            stop_daemon()
+
+        mock_kill.assert_not_called()
+        assert not pid_file.exists()
+        assert not sock_path.exists()
+
     def test_sends_sigterm(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
         sock_path = tmp_path / "promptune.sock"
@@ -541,13 +985,50 @@ class TestStopDaemon:
         with (
             patch("promptune.daemon.daemon.PID_FILE", pid_file),
             patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
-            patch("promptune.daemon.daemon._is_running", side_effect=[True, False]),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
+                return_value=False,
+            ),
             patch("promptune.daemon.daemon.os.kill") as mock_kill,
         ):
             stop_daemon()
         import signal
 
         mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+
+    def test_grace_loop_returns_when_process_dies(
+        self, tmp_path: Path
+    ) -> None:
+        """Grace loop polls cheap _is_running and exits without SIGKILL."""
+        pid_file = tmp_path / "daemon.pid"
+        sock_path = tmp_path / "promptune.sock"
+        pid_file.write_text("12345")
+        sock_path.write_text("")
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
+                side_effect=[True, False],
+            ),
+            patch("promptune.daemon.daemon.os.kill") as mock_kill,
+            patch("promptune.daemon.daemon.time.sleep"),
+        ):
+            stop_daemon()
+        import signal
+
+        # SIGTERM only — process died during grace, never escalated to SIGKILL.
+        mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+        assert not pid_file.exists()
+        assert not sock_path.exists()
 
     def test_sigterm_oserror_cleans_up(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
@@ -556,7 +1037,10 @@ class TestStopDaemon:
         with (
             patch("promptune.daemon.daemon.PID_FILE", pid_file),
             patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
-            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
             patch(
                 "promptune.daemon.daemon.os.kill",
                 side_effect=OSError("no such process"),
@@ -564,9 +1048,7 @@ class TestStopDaemon:
         ):
             stop_daemon()
 
-    def test_force_kill_after_timeout(
-        self, tmp_path: Path
-    ) -> None:
+    def test_force_kill_after_timeout(self, tmp_path: Path) -> None:
         """Lines 359-365: SIGTERM fails, falls through to SIGKILL."""
         pid_file = tmp_path / "daemon.pid"
         sock_path = tmp_path / "promptune.sock"
@@ -580,6 +1062,10 @@ class TestStopDaemon:
             patch(
                 "promptune.daemon.daemon.SOCKET_PATH",
                 sock_path,
+            ),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
             ),
             patch(
                 "promptune.daemon.daemon._is_running",
@@ -604,6 +1090,41 @@ class TestStopDaemon:
             (12345, sig.SIGKILL),
         )
         assert not pid_file.exists()
+
+    def test_reused_pid_after_grace_timeout_skips_force_kill(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """If PID identity changes during grace, do not SIGKILL it."""
+        pid_file = tmp_path / "daemon.pid"
+        sock_path = tmp_path / "promptune.sock"
+        pid_file.write_text("12345")
+        sock_path.write_text("")
+        caplog.set_level(logging.INFO, logger="promptune.daemon.daemon")
+
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                side_effect=[True, False],
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
+                return_value=True,
+            ),
+            patch("promptune.daemon.daemon.os.kill") as mock_kill,
+            patch("promptune.daemon.daemon.time.sleep"),
+        ):
+            stop_daemon()
+
+        import signal as sig
+
+        mock_kill.assert_called_once_with(12345, sig.SIGTERM)
+        assert not pid_file.exists()
+        assert not sock_path.exists()
+        assert "stale" in caplog.text.lower()
+        assert "reused" in caplog.text.lower()
+        assert "force-killed" not in caplog.text.lower()
 
 
 # -------------------------------------------------------------------
@@ -683,7 +1204,7 @@ class TestWritePidPermissionError:
                 return_value=os.getpid(),
             ),
             patch(
-                "promptune.daemon.daemon._is_running",
+                "promptune.daemon.daemon._is_daemon_process",
                 return_value=True,
             ),
             patch(
@@ -812,7 +1333,7 @@ class TestStartDaemonAccessibility:
             start_daemon(foreground=True)
 
         # Should proceed despite ImportError
-        assert pid_file.exists()
+        assert not pid_file.exists()
 
     def test_background_calls_daemonise(
         self, tmp_path: Path
@@ -926,6 +1447,7 @@ class TestSignalHandler:
 
         handler = captured_handler.get(sig.SIGTERM)
         assert handler is not None
+        mock_platform.hotkey.stop.reset_mock()
 
         # Call the handler — it calls sys.exit(0)
         with pytest.raises(SystemExit):

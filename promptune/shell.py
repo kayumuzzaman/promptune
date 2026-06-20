@@ -134,7 +134,7 @@ _IPC_POSIX = (
     "\"project_root\":\"'\"$(git rev-parse"
     " --show-toplevel 2>/dev/null)\"'\"}' | \\\n"
     "        socat - UNIX-CONNECT:"
-    "~/.local/share/promptune/promptune.sock"
+    '"$HOME"/.local/share/promptune/promptune.sock'
     " >/dev/null 2>&1 &"
 )
 
@@ -145,7 +145,7 @@ _IPC_FISH = (
     "\"project_root\":\"'(git rev-parse"
     " --show-toplevel 2>/dev/null)'\"}' | \\\n"
     "        socat - UNIX-CONNECT:"
-    "~/.local/share/promptune/promptune.sock"
+    "$HOME/.local/share/promptune/promptune.sock"
     " >/dev/null 2>&1 &"
 )
 
