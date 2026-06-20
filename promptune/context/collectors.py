@@ -277,9 +277,18 @@ def collect_tech_stack() -> TechStackContext:
             pkg = json.loads(
                 (root / "package.json").read_text()
             )
+            # A present-but-null or non-object dependencies field (valid JSON,
+            # e.g. "dependencies": null) must not abort the whole collector and
+            # lose the already-detected languages — skip framework detection for
+            # it instead. ``.get(k, {})`` is unsafe here: a present null key
+            # returns None, not the default.
+            raw_deps = pkg.get("dependencies") if isinstance(pkg, dict) else None
+            raw_dev = (
+                pkg.get("devDependencies") if isinstance(pkg, dict) else None
+            )
             all_deps = {
-                **pkg.get("dependencies", {}),
-                **pkg.get("devDependencies", {}),
+                **(raw_deps if isinstance(raw_deps, dict) else {}),
+                **(raw_dev if isinstance(raw_dev, dict) else {}),
             }
             framework_map = {
                 "react": "react",

@@ -172,6 +172,64 @@ class TestClaudeCodeInstall:
         # "hooks": null must not raise TypeError.
         assert installer.is_installed() is False
 
+    def test_is_installed_tolerates_null_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A hook with a null/non-str command reports not-installed, no crash."""
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "UserPromptSubmit": [
+                            {
+                                "matcher": "",
+                                "hooks": [
+                                    {"type": "command", "command": None}
+                                ],
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        # "command": null must not raise TypeError ("x" in None).
+        assert installer.is_installed() is False
+
+    def test_uninstall_tolerates_null_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """uninstall must not crash on a sibling hook with a null command."""
+        settings_path = tmp_path / "settings.json"
+        original = {
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": None}],
+                    }
+                ]
+            }
+        }
+        settings_path.write_text(json.dumps(original))
+        monkeypatch.setattr(
+            "promptune.hooks.claude_code.SETTINGS_PATH",
+            settings_path,
+        )
+        installer = ClaudeCodeInstaller()
+        installer.uninstall()  # must not raise
+        # The unrelated null-command entry is preserved (nothing of ours).
+        data = json.loads(settings_path.read_text())
+        assert (
+            data["hooks"]["UserPromptSubmit"]
+            == original["hooks"]["UserPromptSubmit"]
+        )
+
     def test_install_refuses_to_clobber_corrupt_settings(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

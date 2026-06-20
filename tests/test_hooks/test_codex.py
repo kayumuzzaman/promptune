@@ -276,3 +276,51 @@ def test_is_installed_false_on_scalar_userpromptsubmit(
     hooks_path.write_text(json.dumps({"hooks": {"UserPromptSubmit": 5}}))
     monkeypatch.setattr("promptune.hooks.codex.HOOKS_PATH", hooks_path)
     assert CodexInstaller().is_installed() is False
+
+
+def test_is_installed_tolerates_null_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hook with a null/non-str command reports not-installed, no crash."""
+    hooks_path = tmp_path / "hooks.json"
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {
+                            "matcher": "",
+                            "hooks": [{"type": "command", "command": None}],
+                        }
+                    ]
+                }
+            }
+        )
+    )
+    monkeypatch.setattr("promptune.hooks.codex.HOOKS_PATH", hooks_path)
+    assert CodexInstaller().is_installed() is False
+
+
+def test_uninstall_tolerates_null_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """uninstall must not crash on a sibling hook with a null command."""
+    hooks_path = tmp_path / "hooks.json"
+    original = {
+        "hooks": {
+            "UserPromptSubmit": [
+                {
+                    "matcher": "",
+                    "hooks": [{"type": "command", "command": None}],
+                }
+            ]
+        }
+    }
+    hooks_path.write_text(json.dumps(original))
+    monkeypatch.setattr("promptune.hooks.codex.HOOKS_PATH", hooks_path)
+    CodexInstaller().uninstall()  # must not raise
+    data = json.loads(hooks_path.read_text())
+    assert (
+        data["hooks"]["UserPromptSubmit"]
+        == original["hooks"]["UserPromptSubmit"]
+    )

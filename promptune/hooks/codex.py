@@ -97,7 +97,8 @@ class CodexInstaller:
             if not (
                 isinstance(entry, dict)
                 and any(
-                    HOOK_COMMAND in h.get("command", "")
+                    isinstance(h.get("command"), str)
+                    and HOOK_COMMAND in h["command"]
                     for h in (entry.get("hooks") or [])
                     if isinstance(h, dict)
                 )
@@ -122,7 +123,8 @@ class CodexInstaller:
         if not isinstance(entries, list):
             return False
         return any(
-            HOOK_COMMAND in h.get("command", "")
+            isinstance(h.get("command"), str)
+            and HOOK_COMMAND in h["command"]
             for entry in entries
             if isinstance(entry, dict)
             for h in (entry.get("hooks") or [])
