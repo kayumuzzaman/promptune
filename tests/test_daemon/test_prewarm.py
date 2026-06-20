@@ -82,6 +82,23 @@ class TestPrewarmOllama:
         prewarm_ollama("http://localhost:11434", "qwen2.5:3b")
 
     @patch("promptune.daemon.prewarm.httpx")
+    def test_errors_redact_host_userinfo(
+        self, mock_httpx: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Credentialed hosts are redacted from prewarm logs."""
+        import httpx as real_httpx
+
+        mock_httpx.post.side_effect = real_httpx.ConnectError(
+            "Cannot connect to http://user:pass@localhost:11434"
+        )
+        mock_httpx.HTTPStatusError = real_httpx.HTTPStatusError
+
+        prewarm_ollama("http://user:pass@localhost:11434", "qwen2.5:3b")
+
+        assert "user:pass" not in caplog.text
+        assert "localhost:11434" in caplog.text
+
+    @patch("promptune.daemon.prewarm.httpx")
     def test_custom_keepalive_forwarded(self, mock_httpx: MagicMock) -> None:
         """The keepalive parameter is forwarded in the JSON payload."""
         mock_response = MagicMock()

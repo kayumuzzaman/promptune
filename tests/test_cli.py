@@ -230,8 +230,8 @@ def test_config_set_key(mocker, tmp_path) -> None:
             "config",
             "--set-key",
             "claude",
-            "sk-ant-test123",
         ],
+        input="sk-ant-test123\n",
     )
     assert result.exit_code == 0
 
@@ -244,7 +244,9 @@ def test_set_key_writes_owner_only_permissions(mocker, tmp_path) -> None:
     )
     runner = CliRunner()
     result = runner.invoke(
-        main, ["config", "--set-key", "claude", "sk-ant-secret"]
+        main,
+        ["config", "--set-key", "claude"],
+        input="sk-ant-secret\n",
     )
     assert result.exit_code == 0
     assert oct(config_file.stat().st_mode & 0o777) == "0o600"
@@ -273,12 +275,33 @@ def test_set_key_persists_into_partial_config_missing_section(
     )
     runner = CliRunner()
     result = runner.invoke(
-        main, ["config", "--set-key", "claude", "sk-ant-PERSISTME"]
+        main,
+        ["config", "--set-key", "claude"],
+        input="sk-ant-PERSISTME\n",
     )
     assert result.exit_code == 0
     content = config_file.read_text()
     assert "sk-ant-PERSISTME" in content
     assert "[api_keys]" in content
+
+
+def test_config_set_key_rejects_inline_secret_without_echo(
+    mocker, tmp_path
+) -> None:
+    """Inline API keys are rejected without echoing the secret in output."""
+    config_file = tmp_path / "config.toml"
+    mocker.patch(
+        "promptune.cli._get_config_path", return_value=config_file
+    )
+    runner = CliRunner()
+    secret = "sk-ant-SHOULDNOTLEAK"
+
+    result = runner.invoke(
+        main, ["config", "--set-key", "claude", secret]
+    )
+
+    assert result.exit_code != 0
+    assert secret not in result.output
 
 
 def test_config_set_key_rejects_unknown_provider(mocker, tmp_path) -> None:
@@ -292,7 +315,7 @@ def test_config_set_key_rejects_unknown_provider(mocker, tmp_path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         main,
-        ["config", "--set-key", "clade", "sk-ant-test123"],
+        ["config", "--set-key", "clade"],
     )
     assert result.exit_code != 0
     assert "Unknown provider" in result.output
@@ -532,6 +555,33 @@ def test_local_llm_status_command(mocker) -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["local-llm-status"])
     assert result.exit_code == 0
+
+
+def test_check_local_llm_connectivity_redacts_host_userinfo(mocker) -> None:
+    """Credentialed local host is not echoed in local status errors."""
+    from promptune.cli import _check_local_llm_connectivity
+
+    mocker.patch(
+        "promptune.cli.load_config",
+        return_value={
+            "local_llm": {
+                "host": "http://user:pass@localhost:11434",
+                "model": "qwen2.5:3b",
+            }
+        },
+    )
+    mocker.patch(
+        "httpx.get",
+        side_effect=Exception(
+            "Cannot connect to http://user:pass@localhost:11434"
+        ),
+    )
+
+    ok, detail = _check_local_llm_connectivity()
+
+    assert not ok
+    assert "user:pass" not in detail
+    assert "localhost:11434" in detail
 
 
 # --- History ---
@@ -1389,6 +1439,17 @@ def test_daemon_start_foreground(mocker):
     mock_start.assert_called_once_with(foreground=True)
 
 
+def test_daemon_start_exits_1_when_start_fails(mocker):
+    """daemon start propagates startup failure via exit code."""
+    mocker.patch(
+        "promptune.daemon.daemon.start_daemon",
+        return_value=False,
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["daemon", "start"])
+    assert result.exit_code == 1
+
+
 def test_daemon_stop_calls_stop(mocker):
     """daemon stop invokes stop_daemon."""
     mock_stop = mocker.patch(
@@ -1413,6 +1474,34 @@ def test_daemon_restart_calls_both(mocker):
     assert result.exit_code == 0
     mock_stop.assert_called_once()
     mock_start.assert_called_once()
+
+
+def test_daemon_report_cwd_sends_ipc_message(mocker):
+    """Hidden daemon report-cwd command sends JSON via Python, not shell echo."""
+    mock_send = mocker.patch(
+        "promptune.daemon.ipc.send_ipc_message",
+        return_value={"ok": True},
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        main,
+        [
+            "daemon",
+            "report-cwd",
+            "--cwd",
+            '/tmp/a"b',
+            "--project-root",
+            "/tmp/project",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_send.assert_called_once_with({
+        "action": "report_cwd",
+        "cwd": '/tmp/a"b',
+        "project_root": "/tmp/project",
+    })
 
 
 # ── Daemon setup (macOS path) ────────────────────────────────

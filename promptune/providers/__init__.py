@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 
 class ProviderError(Exception):
@@ -16,6 +17,33 @@ def redact_secrets(message: str, *secrets: str) -> str:
         if secret:
             message = message.replace(secret, "[REDACTED]")
     return message
+
+
+def redact_url_userinfo(value: str) -> str:
+    """Redact username/password embedded in URLs."""
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return value
+    if not parsed.scheme or "@" not in parsed.netloc:
+        return value
+    _, host = parsed.netloc.rsplit("@", 1)
+    return urlunsplit((
+        parsed.scheme,
+        f"[REDACTED]@{host}",
+        parsed.path,
+        parsed.query,
+        parsed.fragment,
+    ))
+
+
+def redact_url_userinfo_in_text(text: str, *urls: str) -> str:
+    """Redact URL userinfo for each known URL occurrence in text."""
+    for url in urls:
+        redacted = redact_url_userinfo(url)
+        if redacted != url:
+            text = text.replace(url, redacted)
+    return text
 
 
 class ProviderNotFoundError(Exception):

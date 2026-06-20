@@ -71,7 +71,12 @@ def _safe_git(args: tuple[str, ...], timeout: float = 0.3) -> str:
     """Run a git command, returning '' on any failure or timeout."""
     try:
         return _run_git(args, timeout=timeout)
-    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+    except (
+        subprocess.SubprocessError,
+        FileNotFoundError,
+        OSError,
+        UnicodeDecodeError,
+    ):
         return ""
 
 

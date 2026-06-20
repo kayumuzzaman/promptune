@@ -177,6 +177,37 @@ def test_local_connection_refused(mocker: MockerFixture) -> None:
         provider.enhance("prompt", "system")
 
 
+def test_local_errors_redact_host_userinfo(
+    mocker: MockerFixture,
+) -> None:
+    """Credentialed local LLM URLs are redacted from user-facing errors."""
+    import httpx
+
+    provider = LocalProvider(
+        model="qwen2.5:3b", host="http://user:pass@localhost:11434"
+    )
+    mock_client = mocker.MagicMock()
+    mock_client.post.side_effect = httpx.ConnectError(
+        "Cannot connect to http://user:pass@localhost:11434"
+    )
+    mock_cls = mocker.patch(
+        "promptune.providers.local.httpx.Client"
+    )
+    mock_cls.return_value.__enter__ = mocker.MagicMock(
+        return_value=mock_client
+    )
+    mock_cls.return_value.__exit__ = mocker.MagicMock(
+        return_value=False
+    )
+
+    with pytest.raises(ProviderError) as exc:
+        provider.enhance("prompt", "system")
+
+    message = str(exc.value)
+    assert "user:pass" not in message
+    assert "localhost:11434" in message
+
+
 def test_local_empty_response_handling(
     mocker: MockerFixture,
 ) -> None:

@@ -12,6 +12,8 @@ import threading
 
 import httpx
 
+from promptune.providers import redact_url_userinfo, redact_url_userinfo_in_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,7 @@ def prewarm_ollama(
         keepalive: Ollama keep_alive duration string, e.g. ``"30m"``.
     """
     url = f"{host.rstrip('/')}/api/generate"
+    safe_host = redact_url_userinfo(host.rstrip("/"))
     payload = {"model": model, "prompt": "", "keep_alive": keepalive}
     try:
         response = httpx.post(url, json=payload, timeout=10.0)
@@ -39,22 +42,24 @@ def prewarm_ollama(
         logger.debug(
             "prewarm_ollama: model=%s host=%s status=%s",
             model,
-            host,
+            safe_host,
             response.status_code,
         )
     except httpx.HTTPStatusError as exc:
+        detail = redact_url_userinfo_in_text(str(exc), host)
         logger.warning(
             "prewarm_ollama: HTTP error for model=%s host=%s: %s",
             model,
-            host,
-            exc,
+            safe_host,
+            detail,
         )
     except Exception as exc:  # noqa: BLE001
+        detail = redact_url_userinfo_in_text(str(exc), host)
         logger.warning(
             "prewarm_ollama: connection error for model=%s host=%s: %s",
             model,
-            host,
-            exc,
+            safe_host,
+            detail,
         )
 
 

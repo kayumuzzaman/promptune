@@ -164,6 +164,20 @@ def test_get_project_root_uses_short_git_timeout(
     assert isinstance(root, Path)
 
 
+def test_safe_git_degrades_on_unicode_decode_error(
+    mocker: MockerFixture,
+) -> None:
+    """Git output decode failures degrade like other git failures."""
+    from promptune.context.collectors import _safe_git
+
+    mocker.patch(
+        "promptune.context.collectors._run_git",
+        side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad byte"),
+    )
+
+    assert _safe_git(("status", "--short")) == ""
+
+
 def test_shell_history_error_patterns(
     mocker: MockerFixture, tmp_path
 ) -> None:

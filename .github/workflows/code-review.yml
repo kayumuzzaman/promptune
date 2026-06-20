@@ -26,6 +26,7 @@ jobs:
           python-version: "3.12"
 
       - name: Generate GitHub App token
+        if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: tibdex/github-app-token@v2
         id: app-token
         with:
@@ -33,6 +34,7 @@ jobs:
           private_key: ${{ secrets.GEMINI_APP_KEY }}
 
       - name: Run Gemini Code Review
+        if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}

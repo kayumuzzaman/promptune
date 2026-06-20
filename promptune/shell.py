@@ -7,7 +7,7 @@ import sys
 
 # Shell metacharacters that could break out of the quoted bind line and inject
 # commands when the generated widget is eval'd.
-_UNSAFE_KEY_CHARS = "'\"`;$\n\r"
+_UNSAFE_KEY_CHARS = "'\"`;$&| \t\n\r"
 
 
 def _translate_key(canonical: str, shell: str) -> str:
@@ -128,24 +128,16 @@ def detect_shell() -> str:
 # keeps the echo + socat pipeline readable while staying under 88 columns
 # in the Python source.
 _IPC_POSIX = (
-    "command -v socat >/dev/null 2>&1 && "
-    "echo '{\"action\":\"report_cwd\","
-    "\"cwd\":\"'\"$PWD\"'\","
-    "\"project_root\":\"'\"$(git rev-parse"
-    " --show-toplevel 2>/dev/null)\"'\"}' | \\\n"
-    "        socat - UNIX-CONNECT:"
-    '"$HOME"/.local/share/promptune/promptune.sock'
+    "promptune daemon report-cwd --cwd \"$PWD\" "
+    "--project-root \"$(git rev-parse --show-toplevel 2>/dev/null)\""
     " >/dev/null 2>&1 &"
 )
 
 _IPC_FISH = (
-    "command -v socat >/dev/null 2>&1; and "
-    "echo '{\"action\":\"report_cwd\","
-    "\"cwd\":\"'(pwd)'\","
-    "\"project_root\":\"'(git rev-parse"
-    " --show-toplevel 2>/dev/null)'\"}' | \\\n"
-    "        socat - UNIX-CONNECT:"
-    "$HOME/.local/share/promptune/promptune.sock"
+    "set -l __promptune_root "
+    "(git rev-parse --show-toplevel 2>/dev/null); "
+    "promptune daemon report-cwd --cwd (pwd) "
+    "--project-root \"$__promptune_root\""
     " >/dev/null 2>&1 &"
 )
 

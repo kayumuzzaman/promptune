@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -41,6 +42,12 @@ def _write_event(tmp_path, data: dict) -> Path:
     return p
 
 
+def _http_error(mod, code: int, reason: str):
+    error = mod.urllib.error.HTTPError("url", code, reason, {}, io.BytesIO())
+    error.close()
+    return error
+
+
 def test_get_pr_diff_returns_diff(mod, tmp_path):
     event = {"pull_request": {"url": "https://api.github.com/repos/owner/repo/pulls/1"}}
     with patch.object(mod.urllib.request, "urlopen") as mock:
@@ -57,9 +64,7 @@ def test_get_pr_diff_returns_diff(mod, tmp_path):
 def test_get_pr_diff_http_error_returns_empty(mod, tmp_path):
     event = {"pull_request": {"url": "https://api.github.com/repos/owner/repo/pulls/1"}}
     with patch.object(mod.urllib.request, "urlopen") as mock:
-        mock.side_effect = mod.urllib.error.HTTPError(
-            "url", 404, "Not Found", {}, None,
-        )
+        mock.side_effect = _http_error(mod, 404, "Not Found")
         diff = mod.get_pr_diff(event)
     assert diff == ""
 
@@ -85,7 +90,7 @@ def test_get_push_diff_returns_diff(mod):
         diff = mod.get_push_diff(event)
     assert diff == expected
     cmd = mock.call_args[0][0]
-    assert cmd == ["git", "diff", "oldsha123..HEAD"]
+    assert cmd == ["git", "diff", "oldsha123..HEAD", "--"]
     assert mock.call_args[1]["check"] is True
 
 
@@ -96,7 +101,7 @@ def test_get_push_diff_initial_commit(mod):
         diff = mod.get_push_diff(event)
     assert diff
     cmd = mock.call_args[0][0]
-    assert cmd == ["git", "diff", mod.EMPTY_TREE_SHA, "HEAD"]
+    assert cmd == ["git", "diff", mod.EMPTY_TREE_SHA, "HEAD", "--"]
 
 
 def test_get_push_diff_no_before(mod):
@@ -105,7 +110,7 @@ def test_get_push_diff_no_before(mod):
         mock.return_value.stdout = "--- a/file.py\n+++ b/file.py\n"
         mod.get_push_diff(event)
     cmd = mock.call_args[0][0]
-    assert cmd == ["git", "diff", mod.EMPTY_TREE_SHA, "HEAD"]
+    assert cmd == ["git", "diff", mod.EMPTY_TREE_SHA, "HEAD", "--"]
 
 
 def test_get_push_diff_subprocess_error_returns_empty(mod):
@@ -175,27 +180,39 @@ def test_review_with_gemini_returns_review(mod):
 
 def test_review_with_gemini_api_error(mod, capsys):
     with patch.object(mod.urllib.request, "urlopen") as mock:
-        mock.side_effect = mod.urllib.error.HTTPError(
-            "url", 429, "Too Many Requests", {}, None,
-        )
+        mock.side_effect = _http_error(mod, 429, "Too Many Requests")
         review = mod.review_with_gemini("diff")
     # Public comment is generic — raw API error detail must not be echoed into
     # a publicly visible PR/commit comment.
     assert "unavailable" in review.lower()
     assert "429" not in review
     # The detail is still logged to the Action log for debugging.
-    assert "429" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "429" in err
+    assert mod.GEMINI_API_KEY not in review
+    assert mod.GITHUB_TOKEN not in review
+    assert mod.GEMINI_API_KEY not in err
+    assert mod.GITHUB_TOKEN not in err
 
 
 def test_review_with_gemini_unexpected_response(mod, capsys):
-    resp = json.dumps({"unexpected_payload": "bar"}).encode()
+    resp = json.dumps({
+        "unexpected_payload": "bar",
+        "echoed_key": "test-gemini-key",
+        "echoed_token": "test-github-token",
+    }).encode()
     with patch.object(mod.urllib.request, "urlopen") as mock:
         mock.return_value.__enter__.return_value.read.return_value = resp
         review = mod.review_with_gemini("diff")
     # Generic public message; the raw API payload is not dumped into the comment.
     assert "unavailable" in review.lower()
     assert "unexpected_payload" not in review
-    assert "unexpected_payload" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "unexpected_payload" in err
+    assert mod.GEMINI_API_KEY not in review
+    assert mod.GITHUB_TOKEN not in review
+    assert mod.GEMINI_API_KEY not in err
+    assert mod.GITHUB_TOKEN not in err
 
 
 def test_review_with_gemini_truncates_large_diff(mod):
@@ -265,9 +282,7 @@ def test_post_comment_http_error_exits(mod, tmp_path):
     monkeypatch.setattr(mod, "EVENT_PATH", str(event_file))
 
     with patch.object(mod.urllib.request, "urlopen") as mock:
-        mock.side_effect = mod.urllib.error.HTTPError(
-            "url", 403, "Forbidden", {}, None,
-        )
+        mock.side_effect = _http_error(mod, 403, "Forbidden")
         with pytest.raises(SystemExit) as exc:
             mod.post_comment("comment")
     assert exc.value.code == 1
@@ -286,11 +301,18 @@ def test_post_comment_url_error_exits(mod, tmp_path):
     assert exc.value.code == 1
 
 
-def test_review_with_gemini_url_error(mod):
+def test_review_with_gemini_url_error(mod, capsys):
     with patch.object(mod.urllib.request, "urlopen") as mock:
-        mock.side_effect = mod.urllib.error.URLError("Timeout")
+        mock.side_effect = mod.urllib.error.URLError(
+            "Timeout while using test-gemini-key and test-github-token",
+        )
         review = mod.review_with_gemini("diff")
     assert "unavailable" in review.lower()
+    err = capsys.readouterr().err
+    assert mod.GEMINI_API_KEY not in review
+    assert mod.GITHUB_TOKEN not in review
+    assert mod.GEMINI_API_KEY not in err
+    assert mod.GITHUB_TOKEN not in err
 
 
 # ---------------------------------------------------------------------------

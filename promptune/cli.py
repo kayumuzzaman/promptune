@@ -27,7 +27,11 @@ from promptune.preferences import (
     analyse_edit_patterns,
     analyse_rule_preferences,
 )
-from promptune.providers import ProviderError
+from promptune.providers import (
+    ProviderError,
+    redact_url_userinfo,
+    redact_url_userinfo_in_text,
+)
 from promptune.scorer import score_prompt
 from promptune.shell import generate_widget
 
@@ -280,13 +284,32 @@ def mcp_cmd() -> None:
         raise SystemExit(1) from e
 
 
-@main.group(invoke_without_command=True)
+class _ConfigGroup(click.Group):
+    def parse_args(
+        self, ctx: click.Context, args: list[str]
+    ) -> list[str]:
+        remaining = super().parse_args(ctx, args)
+        if ctx.params.get("set_key") and ctx._protected_args:
+            ctx.args = [*ctx._protected_args, *ctx.args]
+            ctx._protected_args = []
+            remaining = ctx.args
+        return remaining
+
+
+@main.group(
+    cls=_ConfigGroup,
+    invoke_without_command=True,
+    context_settings={
+        "ignore_unknown_options": True,
+        "allow_extra_args": True,
+    },
+)
 @click.option(
     "--set-key",
-    nargs=2,
     type=str,
     default=None,
-    help="Set API key: --set-key <provider> <key>",
+    metavar="<provider>",
+    help="Set API key via hidden prompt: --set-key <provider>",
 )
 @click.option(
     "--set-tier",
@@ -302,7 +325,7 @@ def mcp_cmd() -> None:
 @click.pass_context
 def config(
     ctx: click.Context,
-    set_key: tuple[str, str] | None,
+    set_key: str | None,
     set_tier: int | None,
     reset: bool,
 ) -> None:
@@ -315,6 +338,14 @@ def config(
             "--set-key, --set-tier, and --reset are mutually exclusive."
         )
 
+    if ctx.args:
+        if set_key:
+            raise click.UsageError(
+                "API keys must be entered at the hidden prompt, "
+                "not passed as command arguments."
+            )
+        raise click.UsageError("Unexpected extra arguments.")
+
     config_path = _get_config_path()
 
     if reset:
@@ -326,12 +357,17 @@ def config(
         return
 
     if set_key:
-        provider_name, key_value = set_key
+        provider_name = set_key
         if provider_name not in VALID_PROVIDERS:
             raise click.UsageError(
                 f"Unknown provider '{provider_name}'. "
                 f"Valid: {', '.join(sorted(VALID_PROVIDERS))}."
             )
+        key_value = click.prompt(
+            f"{provider_name} API key",
+            hide_input=True,
+            confirmation_prompt=False,
+        )
         _update_config_value(
             config_path,
             f"api_keys.{provider_name}",
@@ -700,6 +736,7 @@ def _check_local_llm_connectivity() -> (
     host = cfg.get("local_llm", {}).get(
         "host", "http://localhost:11434"
     )
+    safe_host = redact_url_userinfo(host)
     model = cfg.get("local_llm", {}).get(
         "model", "unknown"
     )
@@ -711,13 +748,14 @@ def _check_local_llm_connectivity() -> (
         )
         if resp.status_code == 200:
             return True, (
-                f"{model} responding at {host}"
+                f"{model} responding at {safe_host}"
             )
         return False, (
-            f"HTTP {resp.status_code} from {host}"
+            f"HTTP {resp.status_code} from {safe_host}"
         )
     except Exception as e:
-        return False, f"Cannot reach {host}: {e}"
+        detail = redact_url_userinfo_in_text(str(e), host)
+        return False, f"Cannot reach {safe_host}: {detail}"
 
 
 @main.command("history")
@@ -894,7 +932,8 @@ def start(foreground: bool) -> None:
     """Start the background daemon."""
     from promptune.daemon.daemon import start_daemon
 
-    start_daemon(foreground=foreground)
+    if start_daemon(foreground=foreground) is False:
+        raise SystemExit(1)
 
 
 @daemon.command()
@@ -915,6 +954,20 @@ def restart() -> None:
 
     stop_daemon()
     start_daemon()
+
+
+@daemon.command("report-cwd", hidden=True)
+@click.option("--cwd", required=True)
+@click.option("--project-root", default="")
+def report_cwd(cwd: str, project_root: str) -> None:
+    """Report shell cwd to the daemon IPC socket."""
+    from promptune.daemon.ipc import send_ipc_message
+
+    send_ipc_message({
+        "action": "report_cwd",
+        "cwd": cwd,
+        "project_root": project_root,
+    })
 
 
 @daemon.command()

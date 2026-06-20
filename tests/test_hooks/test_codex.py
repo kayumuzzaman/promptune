@@ -156,6 +156,21 @@ class TestCodexInstall:
         installer = CodexInstaller()
         assert installer.is_installed() is False
 
+    def test_top_level_list_is_treated_as_corrupt_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A JSON array root is corrupt, not an AttributeError path."""
+        hooks_path = tmp_path / "hooks.json"
+        hooks_path.write_text("[]")
+        monkeypatch.setattr(
+            "promptune.hooks.codex.HOOKS_PATH",
+            hooks_path,
+        )
+        installer = CodexInstaller()
+        assert installer.is_installed() is False
+        with pytest.raises(HookConfigError):
+            installer.install()
+
     def test_install_with_str_hooks_raises_config_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

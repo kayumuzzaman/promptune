@@ -40,6 +40,19 @@ class TestParseTemplate:
         assert tpl.intent is None
         assert tpl.domain == "webdev"
 
+    def test_quoted_frontmatter_scalars_are_unquoted(self) -> None:
+        content = (
+            "---\n"
+            'intent: "debug"\n'
+            "domain: 'python'\n"
+            "---\n"
+            "Quoted metadata"
+        )
+        tpl = parse_template(content, "quoted.md")
+        assert tpl is not None
+        assert tpl.intent == "debug"
+        assert tpl.domain == "python"
+
     def test_no_frontmatter_returns_none(self) -> None:
         content = "Just text, no frontmatter"
         assert parse_template(content, "bad.md") is None

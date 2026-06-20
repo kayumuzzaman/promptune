@@ -152,6 +152,23 @@ class TestMcpEnhanceTool:
 
         mock_enhance.assert_not_called()
 
+    @pytest.mark.parametrize("tier", [True, 99, -2])
+    def test_enhance_rejects_invalid_tier(self, tier: object) -> None:
+        from promptune.config import ConfigError
+        from promptune.mcp.server import _tool_enhance
+
+        with (
+            patch(
+                "promptune.mcp.server.load_config",
+                return_value={"enhancement": {"default_mode": "balanced"}},
+            ),
+            patch("promptune.mcp.server.enhance") as mock_enhance,
+            pytest.raises(ConfigError, match="Invalid tier"),
+        ):
+            _tool_enhance("prompt", tier=tier)  # type: ignore[arg-type]
+
+        mock_enhance.assert_not_called()
+
 
 class TestMcpScoreTool:
     """score tool returns correct structure."""

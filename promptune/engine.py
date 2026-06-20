@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Any
 
 from promptune.config import ConfigError
-from promptune.context import collect_context
+from promptune.context import ContextFingerprint, collect_context
+from promptune.context.collectors import (
+    GitContext,
+    ShellHistoryContext,
+    TechStackContext,
+)
 from promptune.context.ranker import rank_context
 from promptune.dedup import dedup_check
 from promptune.history import HistoryEntry, HistoryStore
@@ -127,11 +132,43 @@ def _dedup_provider_model_routes(
         and max_tier >= 1
     ):
         routes.add(("local", cfg["local_llm"].get("model", "")))
-    if max_tier >= 2:
+    elif max_tier >= 2:
         provider = cfg["provider"]["default"]
         model = cfg["provider"].get(f"model_{provider}", "")
         routes.add((provider, model))
     return routes
+
+
+def _context_with_enabled_collectors(
+    fp: ContextFingerprint,
+    context_cfg: dict[str, Any],
+) -> ContextFingerprint:
+    git = fp.git if context_cfg.get("use_git", True) else GitContext(
+        branch="",
+        recent_commits=[],
+        modified_files=[],
+        diff_stats="",
+        stash_count=0,
+    )
+    shell = (
+        fp.shell
+        if context_cfg.get("use_shell_history", True)
+        else ShellHistoryContext(
+            recent_commands=[],
+            error_patterns=[],
+            session_intent="unknown",
+        )
+    )
+    tech = (
+        fp.tech
+        if context_cfg.get("use_stack_detection", True)
+        else TechStackContext(
+            languages=[],
+            frameworks=[],
+            package_manager=None,
+        )
+    )
+    return ContextFingerprint(git=git, shell=shell, tech=tech, env=fp.env)
 
 
 def get_registry() -> ProviderRegistry:
@@ -404,7 +441,10 @@ def enhance(
     ])
     context_fp = None
     if context_enabled:
-        context_fp = collect_context(timeout_ms=400)
+        context_fp = _context_with_enabled_collectors(
+            collect_context(timeout_ms=400),
+            context_cfg,
+        )
         context_str = rank_context(
             context_fp,
             token_budget=context_cfg.get(

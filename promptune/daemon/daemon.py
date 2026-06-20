@@ -440,12 +440,12 @@ def _daemonise() -> None:
 def start_daemon(
     foreground: bool = False,
     config_path: str | None = None,
-) -> None:
+) -> bool:
     """Start the promptune daemon."""
     existing_pid = _read_pid()
     if existing_pid is not None and _is_daemon_process(existing_pid):
         _log.error("Daemon already running (PID %d)", existing_pid)
-        return
+        return True
 
     cfg_path = Path(config_path) if config_path else None
     config = load_config(config_path=cfg_path)
@@ -456,7 +456,7 @@ def start_daemon(
         platform = get_platform(settle_ms=settle_ms)
     except PlatformError as exc:
         _log.error("Platform error: %s", exc)
-        return
+        return False
 
     # macOS: verify accessibility
     if sys.platform == "darwin":
@@ -468,7 +468,7 @@ def start_daemon(
                     "Accessibility permissions not granted. Grant access "
                     "in System Settings > Privacy & Security > Accessibility."
                 )
-                return
+                return False
         except ImportError:
             pass
 
@@ -551,6 +551,7 @@ def start_daemon(
 
         _log.info("Entering event loop")
         platform.hotkey.listen()
+        return True
     except Exception:
         _log.exception("Daemon startup failed; cleaning up")
         raise

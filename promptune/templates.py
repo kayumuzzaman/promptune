@@ -58,7 +58,7 @@ def parse_template(content: str, filename: str) -> Template | None:
             if len(parts) != 2:
                 return None
             key = parts[0].strip()
-            value = parts[1].strip()
+            value = _unquote_scalar(parts[1].strip())
             fields[key] = value
     except Exception:
         return None
@@ -75,6 +75,12 @@ def parse_template(content: str, filename: str) -> Template | None:
         body=body,
         filename=filename,
     )
+
+
+def _unquote_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def load_templates(project_root: Path | str) -> list[Template]:

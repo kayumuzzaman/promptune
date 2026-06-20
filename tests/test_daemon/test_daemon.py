@@ -777,9 +777,10 @@ class TestStartDaemon:
             ),
             patch("promptune.daemon.daemon.get_platform") as mock_get_platform,
         ):
-            start_daemon(foreground=True)
+            result = start_daemon(foreground=True)
 
         # Early return: platform detection (and thus hotkey.listen) never runs.
+        assert result is True
         mock_get_platform.assert_not_called()
 
     def test_platform_error_exits_early(self, tmp_path: Path) -> None:
@@ -793,7 +794,9 @@ class TestStartDaemon:
                 side_effect=PlatformError("unsupported"),
             ),
         ):
-            start_daemon(foreground=True)
+            result = start_daemon(foreground=True)
+
+        assert result is False
 
     def test_foreground_start_runs_event_loop(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"

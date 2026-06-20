@@ -33,6 +33,7 @@ except ImportError:  # pragma: no cover
 
 UNDO_FILE = Path("~/.local/share/promptune/undo.txt").expanduser()
 CLIPBOARD_SETTLE_MS = 100
+CLIPBOARD_COMMAND_TIMEOUT = 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +52,7 @@ def save_clipboard() -> str | None:
             capture_output=True,
             text=True,
             check=True,
+            timeout=CLIPBOARD_COMMAND_TIMEOUT,
         )
         return result.stdout
     except Exception:
@@ -64,6 +66,7 @@ def write_clipboard(text: str) -> None:
         input=text,
         text=True,
         check=True,
+        timeout=CLIPBOARD_COMMAND_TIMEOUT,
     )
 
 
@@ -138,6 +141,7 @@ def _read_clipboard_raising() -> str:
         capture_output=True,
         text=True,
         check=True,
+        timeout=CLIPBOARD_COMMAND_TIMEOUT,
     )
     return result.stdout
 

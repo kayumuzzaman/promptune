@@ -245,6 +245,35 @@ class TestIPCServer:
         # Server still running, state unchanged
         assert state.last_cwd == ""
 
+    def test_non_object_json_does_not_kill_server(
+        self, short_tmp: Path
+    ) -> None:
+        """A valid JSON list is ignored and the IPC server keeps serving."""
+        import socket as _socket
+
+        sock_path = short_tmp / "list_json.sock"
+        state = DaemonState()
+
+        with patch(
+            "promptune.daemon.ipc.SOCKET_PATH", sock_path
+        ):
+            start_ipc_server(state)
+            time.sleep(0.2)
+
+            client = _socket.socket(
+                _socket.AF_UNIX, _socket.SOCK_STREAM
+            )
+            client.connect(str(sock_path))
+            client.sendall(b"[]")
+            client.close()
+            time.sleep(0.1)
+
+            response = send_ipc_message({"action": "status"})
+
+        assert response is not None
+        assert response["running"] is True
+        assert state.last_cwd == ""
+
     def test_handler_exception_on_recv(
         self, short_tmp: Path
     ) -> None:

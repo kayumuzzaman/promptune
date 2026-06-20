@@ -23,11 +23,17 @@ def _load_settings() -> dict[str, Any]:
     if not SETTINGS_PATH.exists():
         return {}
     try:
-        return json.loads(SETTINGS_PATH.read_text())  # type: ignore[no-any-return]
+        data = json.loads(SETTINGS_PATH.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         raise HookConfigError(
             f"Refusing to overwrite unreadable {SETTINGS_PATH}: {exc}"
         ) from exc
+    if not isinstance(data, dict):
+        raise HookConfigError(
+            f"Refusing to modify {SETTINGS_PATH}: root is "
+            f"{type(data).__name__}, expected an object."
+        )
+    return data
 
 
 def _save_settings(data: dict[str, Any]) -> None:

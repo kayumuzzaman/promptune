@@ -19,6 +19,13 @@ EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf899d153036e3e6e"
 REQUEST_TIMEOUT = 60
 
 
+def _redact_secrets(text: str) -> str:
+    for secret in (GEMINI_API_KEY, GITHUB_TOKEN):
+        if secret:
+            text = text.replace(secret, "[redacted]")
+    return text
+
+
 def get_pr_diff(event: dict) -> str:
     """Fetch the full diff for a pull request from the GitHub API."""
     pr_url = event["pull_request"]["url"]
@@ -43,12 +50,12 @@ def get_push_diff(event: dict) -> str:
     try:
         if not before or before == "0000000000000000000000000000000000000000":
             result = subprocess.run(
-                ["git", "diff", EMPTY_TREE_SHA, "HEAD"],
+                ["git", "diff", EMPTY_TREE_SHA, "HEAD", "--"],
                 capture_output=True, text=True, check=True,
             )
         else:
             result = subprocess.run(
-                ["git", "diff", f"{before}..HEAD"],
+                ["git", "diff", f"{before}..HEAD", "--"],
                 capture_output=True, text=True, check=True,
             )
     except subprocess.CalledProcessError:
@@ -131,10 +138,10 @@ One-line verdict."""
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             result = json.loads(resp.read().decode())
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
-        # Log the detail to the Action log only; this text is posted as a
-        # public comment, so it must not echo raw API error output (which can
-        # carry the request URL / token).
-        print(f"Gemini API request failed: {e}", file=sys.stderr)
+        print(
+            f"Gemini API request failed: {_redact_secrets(str(e))}",
+            file=sys.stderr,
+        )
         return (
             "_Gemini review unavailable: the model API request failed "
             "(see the Action logs)._"
@@ -143,8 +150,9 @@ One-line verdict."""
     try:
         return result["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError):
+        detail = _redact_secrets(json.dumps(result))[:2000]
         print(
-            f"Unexpected Gemini response shape: {json.dumps(result)[:2000]}",
+            f"Unexpected Gemini response shape: {detail}",
             file=sys.stderr,
         )
         return (

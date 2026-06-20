@@ -26,6 +26,16 @@ def _validate_choice(value: str, valid: set[str], label: str) -> None:
         )
 
 
+def _validate_tier(tier: int | None) -> int | None:
+    if tier is None:
+        return None
+    if isinstance(tier, bool) or not isinstance(tier, int):
+        raise ConfigError("Invalid tier. Must be one of: -1, 0, 1, 2")
+    if tier not in {-1, 0, 1, 2}:
+        raise ConfigError("Invalid tier. Must be one of: -1, 0, 1, 2")
+    return None if tier == -1 else tier
+
+
 def _tool_enhance(
     prompt: str,
     style: str | None = None,
@@ -37,7 +47,7 @@ def _tool_enhance(
         _validate_choice(style, VALID_MODES, "mode")
         cfg["enhancement"]["default_mode"] = style
 
-    result = enhance(prompt, cfg, tier_override=tier)
+    result = enhance(prompt, cfg, tier_override=_validate_tier(tier))
     return {
         "original": result.original,
         "enhanced": result.enhanced,

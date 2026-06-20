@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -41,6 +42,7 @@ class TestSaveClipboard:
             capture_output=True,
             text=True,
             check=True,
+            timeout=clipboard.CLIPBOARD_COMMAND_TIMEOUT,
         )
 
     def test_failure_returns_none(self) -> None:
@@ -68,6 +70,7 @@ class TestWriteClipboard:
             input="my text",
             text=True,
             check=True,
+            timeout=clipboard.CLIPBOARD_COMMAND_TIMEOUT,
         )
 
     def test_write_empty_string(self) -> None:
@@ -80,7 +83,16 @@ class TestWriteClipboard:
             input="",
             text=True,
             check=True,
+            timeout=clipboard.CLIPBOARD_COMMAND_TIMEOUT,
         )
+
+    def test_write_timeout_propagates(self) -> None:
+        """A wedged pbcopy is bounded by a subprocess timeout."""
+        with patch("promptune.daemon.clipboard.subprocess") as mock_sub:
+            mock_sub.TimeoutExpired = subprocess.TimeoutExpired
+            mock_sub.run.side_effect = subprocess.TimeoutExpired("pbcopy", 2.0)
+            with pytest.raises(subprocess.TimeoutExpired):
+                clipboard.write_clipboard("my text")
 
 
 # ---------------------------------------------------------------------------
