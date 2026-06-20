@@ -12,8 +12,8 @@
 | Date | 2026-06-20 |
 | Branch | fix/gemini-review-hardening |
 | Python | 3.14.3 |
-| Total Tests | 1228 |
-| Test Result | **1222 passed, 6 skipped, 0 failed** |
+| Total Tests | 1229 |
+| Test Result | **1223 passed, 6 skipped, 0 failed** |
 | Coverage | **97.27%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
@@ -153,6 +153,16 @@ lint/mypy/coverage gates.
 Also hardened (defensive, flagged twice): the private `ctx._protected_args`
 access in `_ConfigGroup` is now `getattr`-guarded so the positional-API-key
 rejection survives a future click that drops the attribute.
+
+**Codex PR #19 (merged) follow-up — 1 finding [RESOLVED]:** the Codex GitHub
+reviewer left a P1 on merged PR #19's `daemon/daemon.py`. When a pip/pipx
+console script launches the daemon, `ps -o comm=` can report `promptune` while
+`ps -o command=` starts with the python interpreter; the `comm=promptune`
+branch only ran `_is_console_script_command()` (which rejects python-prefixed
+commands), so a live daemon read as stale — `stop`/`status` missed it and
+`start` could launch a duplicate. The branch now also accepts the
+python-console-script form (`comm=promptune` is a strong identity signal).
+Regression: `test_is_daemon_process_accepts_promptune_comm_python_command`.
 
 **Rejected as false positive:** a reviewer flagged `_dedup_provider_model_routes`
 changing `if max_tier >= 2` to `elif` as a dropped cloud route. The `elif` is

@@ -208,7 +208,13 @@ def _is_daemon_process(pid: int) -> bool:
         return False
     process_name_norm = process_name.lower()
     if process_name_norm == "promptune":
-        return _is_console_script_command(command)
+        # comm=promptune is a strong identity signal (only our console script
+        # has that executable name), so accept the shebang/pipx form where
+        # `ps -o command=` shows the python interpreter ahead of the script.
+        return (
+            _is_console_script_command(command)
+            or _is_python_console_script_command(command)
+        )
     if _is_python_executable(process_name_norm):
         return (
             _is_python_module_command(command)
