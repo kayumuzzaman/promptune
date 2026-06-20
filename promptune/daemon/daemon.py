@@ -144,32 +144,44 @@ def _process_name(pid: int) -> str | None:
 _PROMPTUNE_DAEMON_ARGS_RE = re.compile(
     r"(?:^|/)promptune\s+daemon\s+start(?:\s|$)"
 )
+_PYTHON_EXECUTABLE_PATTERN = r"python(?:\d+(?:\.\d+)?(?:dm|d|t)?)?"
+_PYTHON_MODULE_EXECUTABLE_RE = re.compile(
+    rf"^(?:{_PYTHON_EXECUTABLE_PATTERN}|.*?/{_PYTHON_EXECUTABLE_PATTERN})"
+    r"(?=\s)",
+    re.IGNORECASE,
+)
 _PYTHON_MODULE_DAEMON_ARGS_RE = re.compile(
-    r"(?:^|\s)-m\s+promptune\s+daemon\s+start(?:\s|$)"
+    r"\s+-m\s+promptune\s+daemon\s+start(?:\s|$)",
+    re.IGNORECASE,
 )
 _PYTHON_COMMAND_RE = re.compile(
-    r"^\S*python(?:\d+(?:\.\d+)?)?(?:\s|$)", re.IGNORECASE
+    rf"^(?:\S*/)?{_PYTHON_EXECUTABLE_PATTERN}(?:\s|$)", re.IGNORECASE
 )
 _PYTHON_CONSOLE_SCRIPT_RE = re.compile(
-    r"^\S*python(?:\d+(?:\.\d+)?)?\s+"
+    rf"^(?:\S*/)?{_PYTHON_EXECUTABLE_PATTERN}\s+"
     r"(?:\S*/)?promptune\s+daemon\s+start(?:\s|$)",
     re.IGNORECASE,
 )
 _PYTHON_SPACED_CONSOLE_SCRIPT_RE = re.compile(
-    r"^\S*python(?:\d+(?:\.\d+)?)?\s+"
+    rf"^/.+/{_PYTHON_EXECUTABLE_PATTERN}\s+"
     r"/.+/(?:bin|Scripts)/promptune\s+daemon\s+start(?:\s|$)",
     re.IGNORECASE,
 )
 _PYTHON_SCRIPT_ARG_RE = re.compile(
-    r"^\S*python(?:\d+(?:\.\d+)?)?\s+\S+\.pyw?(?:\s|$)",
+    rf"^(?:\S*/)?{_PYTHON_EXECUTABLE_PATTERN}\s+\S+\.pyw?(?:\s|$)",
     re.IGNORECASE,
 )
 
 
 def _is_python_executable(name: str) -> bool:
-    return re.fullmatch(
-        r"python(?:\d+(?:\.\d+)?)?", name.lower()
-    ) is not None
+    return re.fullmatch(_PYTHON_EXECUTABLE_PATTERN, name.lower()) is not None
+
+
+def _is_python_module_command(command: str) -> bool:
+    match = _PYTHON_MODULE_EXECUTABLE_RE.match(command)
+    if match is None:
+        return False
+    return _PYTHON_MODULE_DAEMON_ARGS_RE.match(command, match.end()) is not None
 
 
 def _is_console_script_command(command: str) -> bool:
@@ -199,7 +211,7 @@ def _is_daemon_process(pid: int) -> bool:
         return _is_console_script_command(command)
     if _is_python_executable(process_name_norm):
         return (
-            _PYTHON_MODULE_DAEMON_ARGS_RE.search(command) is not None
+            _is_python_module_command(command)
             or _is_console_script_command(command)
             or _is_python_console_script_command(command)
         )
@@ -569,15 +581,22 @@ def stop_daemon() -> None:
         return
 
     for _ in range(30):
-        if not _is_daemon_process(pid):
+        if not _is_running(pid):
             _cleanup()
             _log.info("Daemon (PID %d) stopped gracefully", pid)
             return
         time.sleep(0.1)
 
     if _is_daemon_process(pid):
-        with contextlib.suppress(OSError):
+        try:
             os.kill(pid, signal.SIGKILL)
+        except OSError:
+            _cleanup()
+            _log.info("PID %d exited before force kill; cleaning up stale files", pid)
+            return
+        _cleanup()
+        _log.info("Daemon (PID %d) force-killed", pid)
+        return
 
     _cleanup()
-    _log.info("Daemon (PID %d) force-killed", pid)
+    _log.info("PID %d stale or reused before force kill; cleaning up files", pid)

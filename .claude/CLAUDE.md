@@ -21,7 +21,6 @@ promptune/
 │   ├── scorer.py                      # 7-dimension quality scoring
 │   ├── tier0.py                       # 9-rule deterministic engine
 │   ├── pqs.py                         # Prompt Quality Score display
-│   ├── formatter.py                   # Provider-specific formatting (XML/MD/Plain)
 │   ├── history.py                     # SQLite history store
 │   ├── dedup.py                       # Semantic deduplication (TF cosine similarity)
 │   ├── preferences.py                 # Preference learning from history
@@ -92,7 +91,6 @@ pytest --cov=promptune --cov-report=term-missing
 ```toml
 [provider]
 default = "claude"                        # claude | openai | openrouter
-format_style = "auto"                     # auto | xml | markdown | plain
 model_claude = "claude-haiku-4-5-20251001"
 model_openai = "gpt-4o-mini"
 model_openrouter = "anthropic/claude-haiku-4.5"

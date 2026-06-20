@@ -9,14 +9,15 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-19 |
+| Date | 2026-06-20 |
 | Branch | q/bug-hunt-beta-readiness |
 | Python | 3.14.3 |
-| Total Tests | 1159 |
-| Test Result | **1153 passed, 6 skipped, 0 failed** |
-| Coverage | **97.47%** (gate ≥ 85%) ✅ |
+| Total Tests | 1166 |
+| Test Result | **1160 passed, 6 skipped, 0 failed** |
+| Coverage | **97.38%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
+| Actionlint | **PASS** — 0 issues |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
 | Pytest Warnings | **0** (verified with `-W error::pytest.PytestUnhandledThreadExceptionWarning`) ✅ |
 
@@ -66,7 +67,7 @@
 | `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
-| `promptune/daemon/daemon.py` | 264 | 9 | 97% | ✅ | executable-bound PID identity + normal-exit cleanup |
+| `promptune/daemon/daemon.py` | 278 | 13 | 95% | ✅ | executable-bound PID identity + reuse-safe stop cleanup |
 | `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
 | `promptune/daemon/ipc.py` | 121 | 8 | 93% | ✅ | Was 82%; timeout/bind/JSON edge coverage |
 | `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
@@ -101,7 +102,7 @@
 | `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4145** | **105** | **97.47%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4159** | **109** | **97.38%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -117,6 +118,38 @@
 ---
 
 ## Known Issues
+
+### -11. PR #19 multi-agent continuation after Claude rate limit (2026-06-20) — 5 findings [RESOLVED]
+
+Codex resumed the Claude multi-agent review loop from the clean local branch,
+validated the unpushed follow-up commit, then ran daemon-focused review/fix/
+re-review cycles until the reviewer reported no remaining issues. Each behavior
+fix landed with a RED regression test first, targeted GREEN runs, and full
+lint/type/actionlint/coverage/warning gates:
+
+- **HIGH** `daemon/daemon.py` — accepting ABI-suffixed Python process names
+  (`python3.13t`, `python3.13d`, `python3.13dm`) re-opened a module-argument
+  false positive: a reused PID from a Python worker could include
+  `-m promptune daemon start` later in argv and be mistaken for the daemon.
+  Module-form detection now binds to the Python executable at command start and
+  requires `-m promptune daemon start` immediately after it. Regressions:
+  `test_is_daemon_process_rejects_python_worker_reused_pid_module_arg` and
+  `test_is_daemon_process_rejects_spaced_python_worker_module_arg`.
+- **MEDIUM** `daemon/daemon.py` — `[a-z]*` accepted arbitrary executable names
+  like `python3.13foo`. `_is_python_executable()` now accepts only recognized
+  ABI/debug/free-threaded suffixes (`t`, `d`, `dm`) while preserving `python`,
+  `python3`, and `python3.12`. Regression:
+  `test_is_python_executable_accepts_abi_suffixes`.
+- **MEDIUM** `daemon/daemon.py` — `stop_daemon()` had the correct pre-SIGKILL
+  identity guard, but no regression test for PID reuse during the grace timeout.
+  Regression `test_reused_pid_after_grace_timeout_skips_force_kill` proves a PID
+  that stops identifying as Promptune after SIGTERM is not SIGKILLed.
+- **LOW** `daemon/daemon.py` — the post-timeout path logged `force-killed` even
+  when the pre-SIGKILL identity guard failed and no SIGKILL was sent. It now logs
+  stale/reused cleanup for that path.
+- **LOW** docs/config memory — `.claude/CLAUDE.md` still mentioned removed
+  formatter/`format_style` state. The stale Claude-specific references were
+  removed.
 
 ### -10. PR #19 third repeated Codex validation loop (2026-06-19) — 1 finding [RESOLVED]
 
@@ -545,7 +578,7 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 | ~~P1~~ | ~~Fix SQLite `ResourceWarning`~~ | ✅ Done | Idempotent close + lifecycle |
 | ~~P1~~ | ~~Improve `hotkey.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `ipc.py` 82% → ≥90%~~ | ✅ Done | 93% |
-| ~~P1~~ | ~~Improve `daemon.py` 83% → ≥90%~~ | ✅ Done | 96% |
+| ~~P1~~ | ~~Improve `daemon.py` 83% → ≥90%~~ | ✅ Done | 95% |
 | ~~P2~~ | ~~Improve `engine.py` 86% → ≥90%~~ | ✅ Done | 97% |
 | ~~P2~~ | ~~Improve `collectors.py` 85% → ≥90%~~ | ✅ Done | 100% |
 | ~~P2~~ | ~~Add `__main__.py` smoke test~~ | ✅ Done | 100% (runpy) |
@@ -573,6 +606,6 @@ After running verification, update:
 ## CI Pipeline Reference
 
 See `.github/workflows/ci.yml` for automated checks.
-Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97.47%).
+Coverage gate is enforced with `--cov-fail-under=85` (now passing at 97.38%).
 Linux CI uses `.coveragerc-linux` so macOS-only daemon modules are omitted only
 on Linux; local macOS coverage includes and measures those modules.

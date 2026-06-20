@@ -126,11 +126,11 @@ def _dedup_provider_model_routes(
         cfg["local_llm"].get("enabled", False)
         and max_tier >= 1
     ):
-        routes.add(("local", cfg["local_llm"].get("model", "") or None))
+        routes.add(("local", cfg["local_llm"].get("model", "")))
     if max_tier >= 2:
         provider = cfg["provider"]["default"]
         model = cfg["provider"].get(f"model_{provider}", "")
-        routes.add((provider, model or None))
+        routes.add((provider, model))
     return routes
 
 

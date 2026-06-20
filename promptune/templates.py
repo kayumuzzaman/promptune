@@ -108,8 +108,8 @@ def match_template(
     if not templates:
         return None
 
-    intents = _ordered_values([intent, *(intent_aliases or [])])
-    domains = _ordered_values([domain, *(domain_aliases or [])])
+    intents = _nonempty_values([intent, *(intent_aliases or [])])
+    domains = _nonempty_values([domain, *(domain_aliases or [])])
     candidates: list[Template] = []
 
     for tpl in templates:
@@ -129,8 +129,8 @@ def match_template(
     return candidates[0]
 
 
-def _ordered_values(values: Iterable[str]) -> set[str]:
-    """Return non-empty candidate values without duplicates."""
+def _nonempty_values(values: Iterable[str]) -> set[str]:
+    """Return the set of non-empty values (deduplicated)."""
     return {value for value in values if value}
 
 

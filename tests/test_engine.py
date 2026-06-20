@@ -369,6 +369,31 @@ def test_engine_auto_dedup_does_not_reuse_ai_result_when_only_tier0_possible(
     assert result.enhanced != "Cloud cached result"
 
 
+def test_dedup_routes_keep_empty_model_to_match_recorded_entries() -> None:
+    """Blanked models must stay "" in routes to match recorded history.
+
+    Regression guard: the route side used to normalise an empty model to None
+    (``model or None``) while the recording side keeps "" (the raw config
+    value). dedup.py compares ``(entry.provider, entry.model)`` against the
+    route set verbatim, so a None-normalised route ``(provider, None)`` never
+    matched the recorded ``(provider, "")`` entry — silently excluding the
+    daemon's own cache entry.
+    """
+    from promptune.engine import _dedup_provider_model_routes
+
+    cfg = {
+        "provider": {"default": "claude", "model_claude": ""},
+        "local_llm": {"enabled": True, "model": ""},
+        "enhancement": {"max_tier": 2},
+    }
+
+    routes = _dedup_provider_model_routes(cfg)
+
+    assert routes == {("claude", ""), ("local", "")}
+    assert ("claude", None) not in routes
+    assert ("local", None) not in routes
+
+
 def test_engine_no_record_when_history_disabled(
     mock_config: dict, tmp_path
 ) -> None:

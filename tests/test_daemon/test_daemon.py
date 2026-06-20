@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -14,6 +15,7 @@ from promptune.daemon.daemon import (
     _cleanup,
     _enhancing,
     _is_daemon_process,
+    _is_python_executable,
     _is_running,
     _on_hotkey,
     _process_command,
@@ -333,6 +335,76 @@ class TestPIDManagement:
             ),
         ):
             assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_python_worker_reused_pid_module_arg(
+        self,
+    ) -> None:
+        """A Python worker that passes `-m promptune` is not the daemon."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.13t",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/usr/bin/python3.13t worker.py -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_rejects_spaced_python_worker_module_arg(
+        self,
+    ) -> None:
+        """A spaced Python worker is not a daemon due to later module args."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/Users/Jane Doe/.venv/bin/python worker.py "
+                    "/usr/bin/python -m promptune daemon start"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is False
+
+    def test_is_daemon_process_accepts_free_threaded_python_comm(
+        self,
+    ) -> None:
+        """Free-threaded/ABI-suffixed interpreters (python3.13t) count."""
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="python3.13t",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/opt/.venv/bin/python3.13t -m promptune daemon start "
+                    "--foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
+    def test_is_python_executable_accepts_abi_suffixes(self) -> None:
+        """ABI suffixes (free-threaded t, debug d/dm) are recognised."""
+        assert _is_python_executable("python3.13t")
+        assert _is_python_executable("python3.13d")
+        assert _is_python_executable("python3.13dm")
+        assert _is_python_executable("python3.12")
+        assert _is_python_executable("python")
+        # A non-interpreter name merely starting with "python" is rejected.
+        assert not _is_python_executable("pythonista")
+        assert not _is_python_executable("python3.13foo")
 
     def test_cleanup_removes_files(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
@@ -915,7 +987,11 @@ class TestStopDaemon:
             patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
             patch(
                 "promptune.daemon.daemon._is_daemon_process",
-                side_effect=[True, False],
+                return_value=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
+                return_value=False,
             ),
             patch("promptune.daemon.daemon.os.kill") as mock_kill,
         ):
@@ -923,6 +999,36 @@ class TestStopDaemon:
         import signal
 
         mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+
+    def test_grace_loop_returns_when_process_dies(
+        self, tmp_path: Path
+    ) -> None:
+        """Grace loop polls cheap _is_running and exits without SIGKILL."""
+        pid_file = tmp_path / "daemon.pid"
+        sock_path = tmp_path / "promptune.sock"
+        pid_file.write_text("12345")
+        sock_path.write_text("")
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
+                side_effect=[True, False],
+            ),
+            patch("promptune.daemon.daemon.os.kill") as mock_kill,
+            patch("promptune.daemon.daemon.time.sleep"),
+        ):
+            stop_daemon()
+        import signal
+
+        # SIGTERM only — process died during grace, never escalated to SIGKILL.
+        mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+        assert not pid_file.exists()
+        assert not sock_path.exists()
 
     def test_sigterm_oserror_cleans_up(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"
@@ -942,9 +1048,7 @@ class TestStopDaemon:
         ):
             stop_daemon()
 
-    def test_force_kill_after_timeout(
-        self, tmp_path: Path
-    ) -> None:
+    def test_force_kill_after_timeout(self, tmp_path: Path) -> None:
         """Lines 359-365: SIGTERM fails, falls through to SIGKILL."""
         pid_file = tmp_path / "daemon.pid"
         sock_path = tmp_path / "promptune.sock"
@@ -961,6 +1065,10 @@ class TestStopDaemon:
             ),
             patch(
                 "promptune.daemon.daemon._is_daemon_process",
+                return_value=True,
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
                 return_value=True,
             ),
             patch(
@@ -982,6 +1090,41 @@ class TestStopDaemon:
             (12345, sig.SIGKILL),
         )
         assert not pid_file.exists()
+
+    def test_reused_pid_after_grace_timeout_skips_force_kill(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """If PID identity changes during grace, do not SIGKILL it."""
+        pid_file = tmp_path / "daemon.pid"
+        sock_path = tmp_path / "promptune.sock"
+        pid_file.write_text("12345")
+        sock_path.write_text("")
+        caplog.set_level(logging.INFO, logger="promptune.daemon.daemon")
+
+        with (
+            patch("promptune.daemon.daemon.PID_FILE", pid_file),
+            patch("promptune.daemon.daemon.SOCKET_PATH", sock_path),
+            patch(
+                "promptune.daemon.daemon._is_daemon_process",
+                side_effect=[True, False],
+            ),
+            patch(
+                "promptune.daemon.daemon._is_running",
+                return_value=True,
+            ),
+            patch("promptune.daemon.daemon.os.kill") as mock_kill,
+            patch("promptune.daemon.daemon.time.sleep"),
+        ):
+            stop_daemon()
+
+        import signal as sig
+
+        mock_kill.assert_called_once_with(12345, sig.SIGTERM)
+        assert not pid_file.exists()
+        assert not sock_path.exists()
+        assert "stale" in caplog.text.lower()
+        assert "reused" in caplog.text.lower()
+        assert "force-killed" not in caplog.text.lower()
 
 
 # -------------------------------------------------------------------
