@@ -208,7 +208,13 @@ def _is_daemon_process(pid: int) -> bool:
         return False
     process_name_norm = process_name.lower()
     if process_name_norm == "promptune":
-        return _is_console_script_command(command)
+        # comm=promptune is a strong identity signal (only our console script
+        # has that executable name), so accept the shebang/pipx form where
+        # `ps -o command=` shows the python interpreter ahead of the script.
+        return (
+            _is_console_script_command(command)
+            or _is_python_console_script_command(command)
+        )
     if _is_python_executable(process_name_norm):
         return (
             _is_python_module_command(command)
@@ -440,12 +446,12 @@ def _daemonise() -> None:
 def start_daemon(
     foreground: bool = False,
     config_path: str | None = None,
-) -> None:
+) -> bool:
     """Start the promptune daemon."""
     existing_pid = _read_pid()
     if existing_pid is not None and _is_daemon_process(existing_pid):
         _log.error("Daemon already running (PID %d)", existing_pid)
-        return
+        return True
 
     cfg_path = Path(config_path) if config_path else None
     config = load_config(config_path=cfg_path)
@@ -456,7 +462,7 @@ def start_daemon(
         platform = get_platform(settle_ms=settle_ms)
     except PlatformError as exc:
         _log.error("Platform error: %s", exc)
-        return
+        return False
 
     # macOS: verify accessibility
     if sys.platform == "darwin":
@@ -468,7 +474,7 @@ def start_daemon(
                     "Accessibility permissions not granted. Grant access "
                     "in System Settings > Privacy & Security > Accessibility."
                 )
-                return
+                return False
         except ImportError:
             pass
 
@@ -551,6 +557,7 @@ def start_daemon(
 
         _log.info("Entering event loop")
         platform.hotkey.listen()
+        return True
     except Exception:
         _log.exception("Daemon startup failed; cleaning up")
         raise

@@ -396,7 +396,8 @@ def _score_context(prompt: str) -> DimensionScore:
         signals.append("audience specified")
 
     lower = prompt.lower()
-    domain_count = sum(1 for t in _TECH_TERMS if t in lower)
+    lower_words = set(re.findall(r"\b\w+\b", lower))
+    domain_count = len(lower_words & _TECH_TERMS)
     domain_bonus = _diminishing_returns(domain_count, 0.3, k=0.3)
     score += domain_bonus
     if domain_count > 0:

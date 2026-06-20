@@ -25,11 +25,17 @@ def _load_hooks() -> dict[str, Any]:
     if not HOOKS_PATH.exists():
         return {}
     try:
-        return json.loads(HOOKS_PATH.read_text())  # type: ignore[no-any-return]
+        data = json.loads(HOOKS_PATH.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         raise HookConfigError(
             f"Refusing to overwrite unreadable {HOOKS_PATH}: {exc}"
         ) from exc
+    if not isinstance(data, dict):
+        raise HookConfigError(
+            f"Refusing to modify {HOOKS_PATH}: root is "
+            f"{type(data).__name__}, expected an object."
+        )
+    return data
 
 
 def _save_hooks(data: dict[str, Any]) -> None:

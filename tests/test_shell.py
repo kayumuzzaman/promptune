@@ -303,6 +303,13 @@ class TestGenerateWidget:
         with pytest.raises(ValueError, match="Unsupported shell"):
             generate_widget("nushell", "ctrl+e")
 
+    @pytest.mark.parametrize("raw_key", ["^E && touch /tmp/pwned", "^E | cat"])
+    def test_raw_key_rejects_shell_control_operators(
+        self, raw_key: str
+    ) -> None:
+        with pytest.raises(ValueError, match="Unsafe raw key"):
+            generate_widget("zsh", raw_key)
+
 
 class TestWarpDetection:
     """Warp Terminal warning in generated scripts."""
@@ -344,27 +351,21 @@ class TestIPCReporting:
 
     def test_zsh_widget_includes_ipc(self) -> None:
         script = _generate_zsh_widget("'^E'")
-        assert "promptune.sock" in script
-        assert "report_cwd" in script
-        assert "socat" in script
+        assert "report-cwd" in script
+        assert "daemon report-cwd" in script
 
     def test_bash_widget_includes_ipc(self) -> None:
         script = _generate_bash_widget('"\\C-e"')
-        assert "promptune.sock" in script
-        assert "report_cwd" in script
-        assert "socat" in script
+        assert "report-cwd" in script
+        assert "daemon report-cwd" in script
 
     def test_fish_widget_includes_ipc(self) -> None:
         script = _generate_fish_widget("\\ce")
-        assert "promptune.sock" in script
-        assert "report_cwd" in script
-        assert "socat" in script
+        assert "report-cwd" in script
+        assert "daemon report-cwd" in script
 
     def test_ipc_socket_path_uses_home_not_tilde(self) -> None:
-        """A `~` mid-argument (``socat - UNIX-CONNECT:~/...``) is not expanded by
-        the shell or by socat, so the widget would target a literal ``~`` path
-        and never reach the daemon, which binds the expanded $HOME path. The
-        snippet must use $HOME so CWD reporting actually works."""
+        """IPC helper must not rely on an unexpanded literal tilde path."""
         for gen, key in [
             (_generate_zsh_widget, "'^E'"),
             (_generate_bash_widget, '"\\C-e"'),
@@ -372,7 +373,7 @@ class TestIPCReporting:
         ]:
             script = gen(key)
             assert "UNIX-CONNECT:~" not in script
-            assert "$HOME" in script
+            assert "~/.local/share/promptune" not in script
 
     def test_ipc_is_nonblocking(self) -> None:
         """IPC line runs in background (&) and discards both stdout/stderr.
@@ -388,3 +389,14 @@ class TestIPCReporting:
         ]:
             script = gen(key)
             assert ">/dev/null 2>&1 &" in script
+
+    def test_ipc_payload_is_not_raw_echoed_json(self) -> None:
+        """CWD reporting must escape cwd/project_root as JSON, not raw echo."""
+        for gen, key in [
+            (_generate_zsh_widget, "'^E'"),
+            (_generate_bash_widget, '"\\C-e"'),
+            (_generate_fish_widget, "\\ce"),
+        ]:
+            script = gen(key)
+            assert "echo '{\"action\":\"report_cwd\"" not in script
+            assert "daemon report-cwd" in script

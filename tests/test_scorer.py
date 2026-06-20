@@ -209,6 +209,16 @@ def test_intent_detection_ignores_substring_matches() -> None:
     assert result.intent == "writing"
 
 
+def test_context_score_ignores_substring_tech_terms() -> None:
+    """Context domain keywords match whole words, not substrings."""
+    result = score_prompt(
+        "write an essay about capital punishment in a restaurant"
+    )
+
+    context = result.dimensions["context"]
+    assert not any("domain keywords" in signal for signal in context.signals)
+
+
 def test_score_calibration_prevents_clustering() -> None:
     """Scores should span a reasonable range, not cluster."""
     prompts = [

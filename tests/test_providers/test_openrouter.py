@@ -116,6 +116,24 @@ def test_openrouter_api_error_handling(
         provider.enhance("prompt", "system")
 
 
+def test_openrouter_error_redacts_base_url_userinfo(
+    mocker: MockerFixture,
+) -> None:
+    """base_url credentials must not leak through error messages."""
+    base_url = "https://user:secret@router.example/api/v1"
+    mock_response = mocker.MagicMock()
+    mock_response.raise_for_status.side_effect = Exception(
+        f"connect error to {base_url}/chat/completions"
+    )
+    _mock_httpx_client(mocker, mock_response)
+
+    provider = OpenRouterProvider(api_key="k", model="m", base_url=base_url)
+    with pytest.raises(ProviderError) as exc:
+        provider.enhance("prompt", "system")
+    assert "secret" not in str(exc.value)
+    assert "user:secret" not in str(exc.value)
+
+
 def test_openrouter_timeout_handling(
     mocker: MockerFixture,
 ) -> None:

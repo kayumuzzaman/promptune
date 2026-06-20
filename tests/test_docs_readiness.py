@@ -117,6 +117,29 @@ def test_github_release_waits_for_pypi_publish() -> None:
     assert re.search(r"\n  release:\n(?:.*\n)*?    needs: publish", release_yml)
 
 
+def test_gemini_review_privileged_steps_skip_fork_pull_requests() -> None:
+    """Gemini review secrets and app token are not used for fork PRs."""
+    workflow = _read(".github/workflows/code-review.yml")
+    same_repo_guard = (
+        "github.event_name == 'push' || "
+        "github.event.pull_request.head.repo.full_name == github.repository"
+    )
+
+    assert "pull_request_target:" not in workflow
+    assert re.search(
+        rf"- name: Generate GitHub App token\n"
+        rf"(?:        .*\n)*?"
+        rf"        if: \${{{{ {re.escape(same_repo_guard)} }}}}",
+        workflow,
+    )
+    assert re.search(
+        rf"- name: Run Gemini Code Review\n"
+        rf"(?:        .*\n)*?"
+        rf"        if: \${{{{ {re.escape(same_repo_guard)} }}}}",
+        workflow,
+    )
+
+
 def test_public_config_docs_do_not_advertise_removed_format_style() -> None:
     """Public config docs should not mention removed provider formatting."""
     public_docs = [

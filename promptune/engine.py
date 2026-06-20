@@ -127,7 +127,7 @@ def _dedup_provider_model_routes(
         and max_tier >= 1
     ):
         routes.add(("local", cfg["local_llm"].get("model", "")))
-    if max_tier >= 2:
+    elif max_tier >= 2:
         provider = cfg["provider"]["default"]
         model = cfg["provider"].get(f"model_{provider}", "")
         routes.add((provider, model))
@@ -397,14 +397,18 @@ def enhance(
 
     # Collect context if enabled
     context_cfg = cfg.get("context", {})
-    context_enabled = any([
-        context_cfg.get("use_git", True),
-        context_cfg.get("use_shell_history", True),
-        context_cfg.get("use_stack_detection", True),
-    ])
+    use_git = context_cfg.get("use_git", True)
+    use_shell = context_cfg.get("use_shell_history", True)
+    use_tech = context_cfg.get("use_stack_detection", True)
+    context_enabled = any([use_git, use_shell, use_tech])
     context_fp = None
     if context_enabled:
-        context_fp = collect_context(timeout_ms=400)
+        context_fp = collect_context(
+            timeout_ms=400,
+            include_git=use_git,
+            include_shell=use_shell,
+            include_tech=use_tech,
+        )
         context_str = rank_context(
             context_fp,
             token_budget=context_cfg.get(

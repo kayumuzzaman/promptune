@@ -230,6 +230,36 @@ class TestPIDManagement:
         ):
             assert _is_daemon_process(12345) is True
 
+    def test_is_daemon_process_accepts_promptune_comm_python_command(
+        self,
+    ) -> None:
+        """comm=promptune while command shows the python interpreter.
+
+        Some pip/pipx console-script launches on Linux report
+        ``ps -o comm=`` as ``promptune`` while ``ps -o command=`` starts with
+        the interpreter (``/venv/bin/python /venv/bin/promptune daemon
+        start``). comm=promptune is a strong identity signal — only our console
+        script has that executable name — so the python-console-script command
+        form must be accepted here too, otherwise a live daemon reads as stale
+        and start_daemon() launches a duplicate. (Codex PR #19 P1.)
+        """
+        with (
+            patch("promptune.daemon.daemon._is_running", return_value=True),
+            patch(
+                "promptune.daemon.daemon._process_name",
+                return_value="promptune",
+            ),
+            patch(
+                "promptune.daemon.daemon._process_command",
+                return_value=(
+                    "/opt/promptune/.venv/bin/python3.12 "
+                    "/opt/promptune/.venv/bin/promptune daemon start "
+                    "--foreground"
+                ),
+            ),
+        ):
+            assert _is_daemon_process(12345) is True
+
     def test_is_daemon_process_rejects_bare_arg_subsequence(self) -> None:
         """A process that merely passes `promptune daemon start` as plain
         arguments (not as the program / -m target) is not our daemon."""
@@ -777,9 +807,10 @@ class TestStartDaemon:
             ),
             patch("promptune.daemon.daemon.get_platform") as mock_get_platform,
         ):
-            start_daemon(foreground=True)
+            result = start_daemon(foreground=True)
 
         # Early return: platform detection (and thus hotkey.listen) never runs.
+        assert result is True
         mock_get_platform.assert_not_called()
 
     def test_platform_error_exits_early(self, tmp_path: Path) -> None:
@@ -793,7 +824,9 @@ class TestStartDaemon:
                 side_effect=PlatformError("unsupported"),
             ),
         ):
-            start_daemon(foreground=True)
+            result = start_daemon(foreground=True)
+
+        assert result is False
 
     def test_foreground_start_runs_event_loop(self, tmp_path: Path) -> None:
         pid_file = tmp_path / "daemon.pid"

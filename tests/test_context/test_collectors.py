@@ -164,6 +164,20 @@ def test_get_project_root_uses_short_git_timeout(
     assert isinstance(root, Path)
 
 
+def test_safe_git_degrades_on_unicode_decode_error(
+    mocker: MockerFixture,
+) -> None:
+    """Git output decode failures degrade like other git failures."""
+    from promptune.context.collectors import _safe_git
+
+    mocker.patch(
+        "promptune.context.collectors._run_git",
+        side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad byte"),
+    )
+
+    assert _safe_git(("status", "--short")) == ""
+
+
 def test_shell_history_error_patterns(
     mocker: MockerFixture, tmp_path
 ) -> None:
@@ -327,6 +341,49 @@ def test_collect_context_parallel(
 
     assert isinstance(result, ContextFingerprint)
     assert result.git.branch == "main"
+
+
+def test_collect_context_skips_disabled_collectors(
+    mocker: MockerFixture,
+) -> None:
+    """Disabled collectors are not submitted."""
+    git = mocker.patch(
+        "promptune.context.collect_git",
+        side_effect=AssertionError("git collector should not run"),
+    )
+    shell = mocker.patch(
+        "promptune.context.collect_shell_history",
+        side_effect=AssertionError("shell collector should not run"),
+    )
+    tech = mocker.patch(
+        "promptune.context.collect_tech_stack",
+        side_effect=AssertionError("tech collector should not run"),
+    )
+    env = mocker.patch(
+        "promptune.context.collect_environment",
+        return_value=EnvironmentContext(
+            in_venv=True,
+            in_container=False,
+            in_ci=False,
+            in_ssh=False,
+        ),
+    )
+
+    result = collect_context(
+        timeout_ms=400,
+        include_git=False,
+        include_shell=False,
+        include_tech=False,
+    )
+
+    git.assert_not_called()
+    shell.assert_not_called()
+    tech.assert_not_called()
+    env.assert_called_once()
+    assert result.git.branch == ""
+    assert result.shell.recent_commands == []
+    assert result.tech.languages == []
+    assert result.env.in_venv is True
 
 
 def test_collect_context_timeout(

@@ -285,10 +285,10 @@ def test_engine_auto_dedup_matches_tier0_result_under_local_enabled(
     assert second.tier_used == -1, "tier-0 result was not deduplicated"
 
 
-def test_engine_auto_dedup_matches_cloud_fallback_under_local_enabled(
+def test_engine_auto_dedup_does_not_reuse_cloud_fallback_when_local_first(
     mock_config: dict, tmp_path, mocker: MockerFixture
 ) -> None:
-    """Local-enabled auto routing may still record a cloud fallback result."""
+    """Auto dedup must not reuse cloud fallback before retrying local first."""
     db = tmp_path / "history.db"
     mock_config["history"]["db_path"] = str(db)
     mock_config["local_llm"]["enabled"] = True
@@ -298,7 +298,10 @@ def test_engine_auto_dedup_matches_cloud_fallback_under_local_enabled(
 
     local = mocker.patch(
         "promptune.engine._try_tier1",
-        side_effect=ProviderError("local down"),
+        side_effect=[
+            ProviderError("local down"),
+            "Local LLM result after recovery",
+        ],
     )
     cloud = mocker.patch(
         "promptune.engine._try_tier2",
@@ -313,8 +316,9 @@ def test_engine_auto_dedup_matches_cloud_fallback_under_local_enabled(
     second = enhance(prompt, mock_config)
 
     assert first.tier_used == 2
-    assert second.tier_used == -1
-    assert local.call_count == 1
+    assert second.tier_used == 1
+    assert second.enhanced == "Local LLM result after recovery"
+    assert local.call_count == 2
     assert cloud.call_count == 1
 
 
@@ -389,9 +393,22 @@ def test_dedup_routes_keep_empty_model_to_match_recorded_entries() -> None:
 
     routes = _dedup_provider_model_routes(cfg)
 
-    assert routes == {("claude", ""), ("local", "")}
+    assert routes == {("local", "")}
     assert ("claude", None) not in routes
     assert ("local", None) not in routes
+
+
+def test_dedup_routes_use_cloud_when_local_disabled() -> None:
+    """Cloud route remains dedup-eligible when local is not first choice."""
+    from promptune.engine import _dedup_provider_model_routes
+
+    cfg = {
+        "provider": {"default": "claude", "model_claude": ""},
+        "local_llm": {"enabled": False, "model": ""},
+        "enhancement": {"max_tier": 2},
+    }
+
+    assert _dedup_provider_model_routes(cfg) == {("claude", "")}
 
 
 def test_engine_no_record_when_history_disabled(
@@ -730,6 +747,80 @@ def test_engine_template_matches_documented_debug_python(
 
     assert result.tier_used == 2
     assert "PYTHON DEBUG TEMPLATE" in captured["system_prompt"]
+
+
+def test_engine_context_respects_individual_disable_flags(
+    mocker: MockerFixture, mock_config: dict
+) -> None:
+    """Enabled git context must not drag disabled shell/stack context along."""
+    from promptune.context import ContextFingerprint
+    from promptune.context.collectors import (
+        EnvironmentContext,
+        GitContext,
+        ShellHistoryContext,
+        TechStackContext,
+    )
+
+    captured: dict[str, str] = {}
+
+    def fake_tier2(
+        prompt: str, system_prompt: str, config: dict
+    ) -> tuple[str, str, str]:
+        captured["system_prompt"] = system_prompt
+        return "AI enhanced", "claude", config["provider"]["model_claude"]
+
+    mock_config["local_llm"]["enabled"] = False
+    mock_config["enhancement"]["dedup_enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+    mock_config["context"] = {
+        "use_git": True,
+        "use_shell_history": False,
+        "use_stack_detection": False,
+        "max_context_tokens": 500,
+    }
+    collect_context = mocker.patch(
+        "promptune.engine.collect_context",
+        return_value=ContextFingerprint(
+            git=GitContext(
+                branch="feature/context-flags",
+                recent_commits=[],
+                modified_files=[],
+                diff_stats="",
+                stash_count=0,
+            ),
+            shell=ShellHistoryContext(
+                recent_commands=[],
+                error_patterns=[],
+                session_intent="unknown",
+            ),
+            tech=TechStackContext(
+                languages=[],
+                frameworks=[],
+                package_manager=None,
+            ),
+            env=EnvironmentContext(
+                in_venv=False,
+                in_container=False,
+                in_ci=False,
+                in_ssh=False,
+            ),
+        ),
+    )
+    mocker.patch("promptune.engine._try_tier2", side_effect=fake_tier2)
+
+    result = enhance("debug auth timeout", mock_config)
+
+    assert result.tier_used == 2
+    collect_context.assert_called_once_with(
+        timeout_ms=400,
+        include_git=True,
+        include_shell=False,
+        include_tech=False,
+    )
+    assert "branch=feature/context-flags" in captured["system_prompt"]
+    assert "secret shell command" not in captured["system_prompt"]
+    assert "stack=python" not in captured["system_prompt"]
+    assert "frameworks=django" not in captured["system_prompt"]
 
 
 def test_engine_no_template_dir_works(

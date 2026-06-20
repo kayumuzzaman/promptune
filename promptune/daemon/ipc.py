@@ -64,9 +64,12 @@ def _handle_message(
 ) -> None:
     """Parse incoming JSON message and dispatch action."""
     try:
-        msg: dict = json.loads(data.decode())
+        msg = json.loads(data.decode())
     except (json.JSONDecodeError, UnicodeDecodeError):
         _log.warning("IPC: received invalid JSON")
+        return
+    if not isinstance(msg, dict):
+        _log.warning("IPC: received non-object JSON")
         return
 
     action = msg.get("action", "")
@@ -154,6 +157,10 @@ def start_ipc_server(state: DaemonState) -> threading.Thread:
                 except OSError as exc:
                     _log.warning(
                         "IPC: connection error: %s", exc
+                    )
+                except Exception:
+                    _log.warning(
+                        "IPC: handler failed", exc_info=True
                     )
                 finally:
                     with contextlib.suppress(OSError):

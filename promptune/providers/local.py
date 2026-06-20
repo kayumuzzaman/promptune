@@ -15,6 +15,8 @@ from promptune.providers import (
     ProviderError,
     ProviderRegistry,
     redact_secrets,
+    redact_url_userinfo,
+    redact_url_userinfo_in_text,
 )
 
 
@@ -33,6 +35,7 @@ class LocalProvider(BaseProvider):
         super().__init__(api_key=api_key, model=model, **kwargs)
         self.max_tokens = max_tokens
         self.host = host.rstrip("/")
+        self._safe_host = redact_url_userinfo(self.host)
         self._headers: dict[str, str] = {
             "Content-Type": "application/json"
         }
@@ -62,19 +65,22 @@ class LocalProvider(BaseProvider):
                 response.raise_for_status()
                 data = response.json()
         except httpx.ConnectError as e:
+            detail = redact_url_userinfo_in_text(str(e), self.host)
             raise ProviderError(
-                f"Cannot connect to local LLM at {self.host}. "
-                f"Is your local LLM server running? Error: {e}"
+                f"Cannot connect to local LLM at {self._safe_host}. "
+                f"Is your local LLM server running? Error: {detail}"
             ) from e
         except httpx.TimeoutException as e:
+            detail = redact_url_userinfo_in_text(str(e), self.host)
             raise ProviderError(
                 f"Timeout connecting to local LLM at "
-                f"{self.host}. The model may be loading "
-                f"(cold start). Error: {e}"
+                f"{self._safe_host}. The model may be loading "
+                f"(cold start). Error: {detail}"
             ) from e
         except Exception as e:
+            detail = redact_url_userinfo_in_text(str(e), self.host)
             raise ProviderError(
-                redact_secrets(str(e), self.api_key)
+                redact_secrets(detail, self.api_key)
             ) from e
 
         if not isinstance(data, dict):
