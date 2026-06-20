@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auto-enhance gate now calls `enhance(record=False)` — it has no accept/reject surface, so it no longer records every gated prompt to history as a confirmed `accept` (which polluted dedup and preference learning with unconfirmed outcomes)
 - macOS `paste_result()` now returns `False` when accessibility permission is missing (the synthetic Cmd+V is silently dropped by the OS), so the daemon reports "paste manually" instead of clobbering the clipboard with the user's original — mirroring the X11/Wayland backends
 - `HistoryStore.set_decision()` now debug-logs when the target row was already pruned (`rowcount == 0`) instead of silently doing nothing
+- Daemon process-identity check now recognises free-threaded and ABI-suffixed CPython interpreters (e.g. `python3.13t`, `python3.13d`); a daemon launched under such a build was previously invisible to its own `start`/`stop`, risking a duplicate or an orphaned process
+- Hook installers (Claude Code, Codex) no longer raise `TypeError` when an existing config entry's `command` value is `null` or non-string; `is_installed()`/`uninstall()` tolerate the malformed value (reporting "not installed" / leaving it untouched), honouring the "never clobber a corrupt config" contract that `promptune doctor` and setup rely on
+- Tech-stack detection no longer discards already-detected languages when `package.json` has a present-but-null or non-object `dependencies`/`devDependencies` field (valid JSON); framework detection is skipped for the malformed section while language and package-manager detection still succeed
 
 ### Added
 
