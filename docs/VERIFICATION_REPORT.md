@@ -10,11 +10,11 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-20 |
-| Branch | q/bug-hunt-beta-readiness |
+| Branch | fix/gemini-review-hardening |
 | Python | 3.14.3 |
-| Total Tests | 1166 |
-| Test Result | **1160 passed, 6 skipped, 0 failed** |
-| Coverage | **97.38%** (gate ≥ 85%) ✅ |
+| Total Tests | 1228 |
+| Test Result | **1222 passed, 6 skipped, 0 failed** |
+| Coverage | **97.27%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | Actionlint | **PASS** — 0 issues |
@@ -69,7 +69,7 @@
 | `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
 | `promptune/daemon/daemon.py` | 278 | 13 | 95% | ✅ | executable-bound PID identity + reuse-safe stop cleanup |
 | `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
-| `promptune/daemon/ipc.py` | 121 | 8 | 93% | ✅ | Was 82%; timeout/bind/JSON edge coverage |
+| `promptune/daemon/ipc.py` | 126 | 10 | 92% | ✅ | non-dict JSON + handler-exception guards |
 | `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
 | `promptune/daemon/notify.py` | 20 | 0 | 100% | ✅ | |
 | `promptune/daemon/platform/__init__.py` | 22 | 0 | 100% | ✅ | |
@@ -87,11 +87,11 @@
 | `promptune/hooks/claude_code.py` | 79 | 0 | 100% | ✅ | |
 | `promptune/hooks/codex.py` | 61 | 0 | 100% | ✅ | |
 | `promptune/mcp/__init__.py` | 0 | 0 | 100% | ✅ | |
-| `promptune/mcp/server.py` | 32 | 0 | 100% | ✅ | validates tool overrides |
+| `promptune/mcp/server.py` | 40 | 1 | 98% | ✅ | validates tool + tier overrides |
 | `promptune/meta_prompt.py` | 56 | 1 | 98% | ✅ | |
 | `promptune/pqs.py` | 50 | 0 | 100% | ✅ | |
 | `promptune/preferences.py` | 68 | 2 | 97% | ✅ | |
-| `promptune/providers/__init__.py` | 32 | 0 | 100% | ✅ | |
+| `promptune/providers/__init__.py` | 50 | 2 | 96% | ✅ | URL-userinfo redaction helpers |
 | `promptune/providers/anthropic.py` | 23 | 0 | 100% | ✅ | |
 | `promptune/providers/local.py` | 41 | 1 | 98% | ✅ | |
 | `promptune/providers/openai.py` | 27 | 1 | 96% | ✅ | |
@@ -102,7 +102,7 @@
 | `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4159** | **109** | **97.38%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4245** | **116** | **97.27%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -118,6 +118,49 @@
 ---
 
 ## Known Issues
+
+### -12. fix/gemini-review-hardening continuation after Codex rate limit (2026-06-20) — 4 findings [RESOLVED]
+
+Claude resumed the `fix/gemini-review-hardening` branch after Codex hit a rate
+limit. Codex's unpushed security/robustness round (secret redaction helpers,
+`--set-key` hidden prompt, fork-PR gating, IPC/hook guards, context toggles,
+word-boundary scoring) was validated green and committed as a checkpoint, then
+adversarial multi-agent review rounds ran review→fix→re-review until a round
+returned clean. Each behavior fix landed RED-test-first with full
+lint/mypy/coverage gates.
+
+- **HIGH** `cli.py` — `daemon restart` called `start_daemon()` but ignored its
+  bool return, so a failed start after stop was reported as success (exit 0).
+  Now mirrors `daemon start` (exit 1 on failure). Regression:
+  `test_daemon_restart_exits_1_when_start_fails`.
+- **HIGH** `cli.py` — `_check_tier1()` (the `doctor` tier-1 probe) emitted the
+  raw `local_llm` host in both its success and failure messages, leaking
+  `user:pass@` userinfo; its sibling `_check_local_llm_connectivity` was already
+  redacted but this instance was missed. Now redacted via `redact_url_userinfo`.
+  Regressions: `test_check_tier1_redacts_host_userinfo_when_{reachable,unreachable}`.
+- **MED** `providers/openrouter.py` — the error path redacted only the api_key,
+  not `base_url` userinfo, but httpx errors embed the request URL. Now also
+  redacts base_url userinfo, matching the local provider. Regression:
+  `test_openrouter_error_redacts_base_url_userinfo`.
+- **MED** `providers/__init__.py` — `redact_url_userinfo_in_text()` only
+  string-replaced the exact configured URL, so credentials leaked when the HTTP
+  library rendered the URL with normalized scheme/host case. It now also redacts
+  any `scheme://user:pass@host` directly via a scheme-anchored regex (bounded
+  scheme length to avoid O(n²) on large error bodies). Regressions added in
+  `tests/test_providers/test_base.py` (case normalization, unhinted URL, bare
+  email untouched, linear-time guard).
+
+Also hardened (defensive, flagged twice): the private `ctx._protected_args`
+access in `_ConfigGroup` is now `getattr`-guarded so the positional-API-key
+rejection survives a future click that drops the attribute.
+
+**Rejected as false positive:** a reviewer flagged `_dedup_provider_model_routes`
+changing `if max_tier >= 2` to `elif` as a dropped cloud route. The `elif` is
+deliberate: when local is the enabled/preferred tier, a previously cached cloud
+*fallback* result must not be dedup-reused, or after local recovers the user is
+served the stale cloud result forever (see
+`test_engine_auto_dedup_does_not_reuse_cloud_fallback_when_local_first`). The
+full suite caught the attempted "fix" as a regression; it was reverted.
 
 ### -11. PR #19 multi-agent continuation after Claude rate limit (2026-06-20) — 5 findings [RESOLVED]
 
