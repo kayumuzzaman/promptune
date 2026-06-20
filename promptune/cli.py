@@ -289,8 +289,14 @@ class _ConfigGroup(click.Group):
         self, ctx: click.Context, args: list[str]
     ) -> list[str]:
         remaining = super().parse_args(ctx, args)
-        if ctx.params.get("set_key") and ctx._protected_args:
-            ctx.args = [*ctx._protected_args, *ctx.args]
+        # Click <9 stashes the first positional (treated as a subcommand name)
+        # in the private ``_protected_args``; fold it into extra args so the
+        # callback rejects it (e.g. an API key mistakenly passed positionally)
+        # without echoing it. Click >=9 routes it straight to ``ctx.args``, so
+        # the getattr fallback keeps the rejection working there too.
+        protected = getattr(ctx, "_protected_args", None)
+        if ctx.params.get("set_key") and protected:
+            ctx.args = [*protected, *ctx.args]
             ctx._protected_args = []
             remaining = ctx.args
         return remaining
@@ -684,6 +690,7 @@ def _check_tier1() -> tuple[bool, str]:
     ):
         return False, "Not configured"
     host = cfg["local_llm"].get("host", "")
+    safe_host = redact_url_userinfo(host)
     try:
         import httpx
 
@@ -691,10 +698,10 @@ def _check_tier1() -> tuple[bool, str]:
             f"{host}/v1/models", timeout=3.0
         )
         return resp.status_code == 200, (
-            f"Local LLM at {host}"
+            f"Local LLM at {safe_host}"
         )
     except Exception:
-        return False, f"Cannot reach {host}"
+        return False, f"Cannot reach {safe_host}"
 
 
 def _check_tier2() -> tuple[bool, str]:

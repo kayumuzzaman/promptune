@@ -11,6 +11,7 @@ from promptune.providers import (
     ProviderError,
     ProviderRegistry,
     redact_secrets,
+    redact_url_userinfo_in_text,
 )
 
 
@@ -60,8 +61,9 @@ class OpenRouterProvider(BaseProvider):
         except ProviderError:
             raise
         except Exception as e:
+            detail = redact_url_userinfo_in_text(str(e), self.base_url)
             raise ProviderError(
-                redact_secrets(str(e), self.api_key)
+                redact_secrets(detail, self.api_key)
             ) from e
 
         if not isinstance(data, dict):

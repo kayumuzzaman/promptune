@@ -1800,6 +1800,45 @@ def test_check_tier1_unreachable(mocker):
     assert "Cannot reach" in msg
 
 
+def test_check_tier1_redacts_host_userinfo_when_reachable(mocker):
+    """_check_tier1 success message must not leak host credentials."""
+    from promptune.cli import _check_tier1
+
+    mocker.patch(
+        "promptune.cli.load_config",
+        return_value={
+            "local_llm": {
+                "enabled": True,
+                "host": "http://user:secret@localhost:11434",
+            }
+        },
+    )
+    mocker.patch("httpx.get", return_value=MagicMock(status_code=200))
+    ok, msg = _check_tier1()
+    assert ok
+    assert "secret" not in msg
+    assert "user:secret" not in msg
+
+
+def test_check_tier1_redacts_host_userinfo_when_unreachable(mocker):
+    """_check_tier1 error message must not leak host credentials."""
+    from promptune.cli import _check_tier1
+
+    mocker.patch(
+        "promptune.cli.load_config",
+        return_value={
+            "local_llm": {
+                "enabled": True,
+                "host": "http://user:secret@localhost:11434",
+            }
+        },
+    )
+    mocker.patch("httpx.get", side_effect=ConnectionError("refused"))
+    ok, msg = _check_tier1()
+    assert not ok
+    assert "secret" not in msg
+
+
 def test_check_tier2_no_key(mocker):
     """_check_tier2 when no API key."""
     from promptune.cli import _check_tier2
