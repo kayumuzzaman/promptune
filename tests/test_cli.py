@@ -1476,6 +1476,19 @@ def test_daemon_restart_calls_both(mocker):
     mock_start.assert_called_once()
 
 
+def test_daemon_restart_exits_1_when_start_fails(mocker):
+    """daemon restart propagates startup failure via exit code, like start."""
+    mock_stop = mocker.patch("promptune.daemon.daemon.stop_daemon")
+    mocker.patch(
+        "promptune.daemon.daemon.start_daemon",
+        return_value=False,
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["daemon", "restart"])
+    assert result.exit_code == 1
+    mock_stop.assert_called_once()
+
+
 def test_daemon_report_cwd_sends_ipc_message(mocker):
     """Hidden daemon report-cwd command sends JSON via Python, not shell echo."""
     mock_send = mocker.patch(

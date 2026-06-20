@@ -953,7 +953,8 @@ def restart() -> None:
     )
 
     stop_daemon()
-    start_daemon()
+    if start_daemon() is False:
+        raise SystemExit(1)
 
 
 @daemon.command("report-cwd", hidden=True)
