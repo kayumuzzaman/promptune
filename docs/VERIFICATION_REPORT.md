@@ -14,7 +14,7 @@
 | Python | 3.14.3 |
 | Total Tests | 1231 |
 | Test Result | **1225 passed, 6 skipped, 0 failed** |
-| Coverage | **97.34%** (gate ≥ 85%) ✅ |
+| Coverage | **97.33%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | Actionlint | **PASS** — 0 issues |
@@ -80,7 +80,7 @@
 | `promptune/daemon/platform/macos.py` | 52 | 1 | 98% | ✅ | |
 | `promptune/daemon/prewarm.py` | 44 | 0 | 100% | ✅ | Timer callback exceptions contained |
 | `promptune/dedup.py` | 64 | 4 | 94% | ✅ | auto cache route filters provider/model |
-| `promptune/engine.py` | 235 | 6 | 97% | ✅ | template aliases + context collector gating |
+| `promptune/engine.py` | 229 | 6 | 97% | ✅ | template aliases + context collector gating |
 | `promptune/gate.py` | 32 | 0 | 100% | ✅ | Was 69% |
 | `promptune/history.py` | 125 | 5 | 96% | ✅ | close() idempotent + context manager |
 | `promptune/hooks/__init__.py` | 16 | 0 | 100% | ✅ | |
@@ -102,7 +102,7 @@
 | `promptune/templates.py` | 92 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4246** | **113** | **97.34%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4240** | **113** | **97.33%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -138,6 +138,11 @@ lint/type/actionlint/coverage/warning gates, and subagent review.
   to auto before validation, so `tier=-2` silently ran as auto. It now validates
   the raw tool argument through `_validate_tier()` and only maps `-1` to `None`.
   Regression: `test_registered_enhance_tool_rejects_invalid_negative_tier`.
+- **LOW** `engine.py` — Gemini's follow-up review flagged the post-collection
+  `_context_with_enabled_collectors()` mask as redundant now that
+  `collect_context()` skips disabled collectors directly. The redundant helper
+  was removed after the P2 fixes were green, keeping the collector-level gating
+  as the single source of truth.
 
 ### -12. fix/gemini-review-hardening continuation after Codex rate limit (2026-06-20) — 4 findings [RESOLVED]
 

@@ -22,12 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from promptune.config import ConfigError
-from promptune.context import ContextFingerprint, collect_context
-from promptune.context.collectors import (
-    GitContext,
-    ShellHistoryContext,
-    TechStackContext,
-)
+from promptune.context import collect_context
 from promptune.context.ranker import rank_context
 from promptune.dedup import dedup_check
 from promptune.history import HistoryEntry, HistoryStore
@@ -137,38 +132,6 @@ def _dedup_provider_model_routes(
         model = cfg["provider"].get(f"model_{provider}", "")
         routes.add((provider, model))
     return routes
-
-
-def _context_with_enabled_collectors(
-    fp: ContextFingerprint,
-    context_cfg: dict[str, Any],
-) -> ContextFingerprint:
-    git = fp.git if context_cfg.get("use_git", True) else GitContext(
-        branch="",
-        recent_commits=[],
-        modified_files=[],
-        diff_stats="",
-        stash_count=0,
-    )
-    shell = (
-        fp.shell
-        if context_cfg.get("use_shell_history", True)
-        else ShellHistoryContext(
-            recent_commands=[],
-            error_patterns=[],
-            session_intent="unknown",
-        )
-    )
-    tech = (
-        fp.tech
-        if context_cfg.get("use_stack_detection", True)
-        else TechStackContext(
-            languages=[],
-            frameworks=[],
-            package_manager=None,
-        )
-    )
-    return ContextFingerprint(git=git, shell=shell, tech=tech, env=fp.env)
 
 
 def get_registry() -> ProviderRegistry:
@@ -440,14 +403,11 @@ def enhance(
     context_enabled = any([use_git, use_shell, use_tech])
     context_fp = None
     if context_enabled:
-        context_fp = _context_with_enabled_collectors(
-            collect_context(
-                timeout_ms=400,
-                include_git=use_git,
-                include_shell=use_shell,
-                include_tech=use_tech,
-            ),
-            context_cfg,
+        context_fp = collect_context(
+            timeout_ms=400,
+            include_git=use_git,
+            include_shell=use_shell,
+            include_tech=use_tech,
         )
         context_str = rank_context(
             context_fp,

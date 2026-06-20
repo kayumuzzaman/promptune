@@ -789,14 +789,14 @@ def test_engine_context_respects_individual_disable_flags(
                 stash_count=0,
             ),
             shell=ShellHistoryContext(
-                recent_commands=["secret shell command"],
-                error_patterns=["pytest failed"],
-                session_intent="debugging",
+                recent_commands=[],
+                error_patterns=[],
+                session_intent="unknown",
             ),
             tech=TechStackContext(
-                languages=["python"],
-                frameworks=["django"],
-                package_manager="pip",
+                languages=[],
+                frameworks=[],
+                package_manager=None,
             ),
             env=EnvironmentContext(
                 in_venv=False,
