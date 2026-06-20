@@ -69,31 +69,38 @@ def _default_env() -> EnvironmentContext:
 
 def collect_context(
     timeout_ms: int = 400,
+    *,
+    include_git: bool = True,
+    include_shell: bool = True,
+    include_tech: bool = True,
 ) -> ContextFingerprint:
     """Run all collectors in parallel with timeout."""
     timeout_s = timeout_ms / 1000.0
 
-    collectors: dict[
-        str,
-        tuple[Callable[[], Any], Callable[[], Any]],
-    ] = {
-        "git": (collect_git, _default_git),
-        "shell": (collect_shell_history, _default_shell),
-        "tech": (collect_tech_stack, _default_tech),
+    collectors: dict[str, tuple[Callable[[], Any], Callable[[], Any]]] = {
         "env": (collect_environment, _default_env),
     }
+    if include_git:
+        collectors["git"] = (collect_git, _default_git)
+    if include_shell:
+        collectors["shell"] = (collect_shell_history, _default_shell)
+    if include_tech:
+        collectors["tech"] = (collect_tech_stack, _default_tech)
 
     # Pre-populate with defaults so any collector that never produces a value
     # (timeout, exception, or a failed submit) still has an entry.
     results: dict = {
-        name: default_fn() for name, (_, default_fn) in collectors.items()
+        "git": _default_git(),
+        "shell": _default_shell(),
+        "tech": _default_tech(),
+        "env": _default_env(),
     }
 
     # Single shared deadline so the whole call is bounded by timeout_s (not
     # N * timeout_s), and shutdown(wait=False) so a hung collector cannot
     # block the call past the budget via the executor's exit.
     deadline = time.monotonic() + timeout_s
-    executor = ThreadPoolExecutor(max_workers=4)
+    executor = ThreadPoolExecutor(max_workers=len(collectors))
     try:
         futures: dict[str, Future[Any]] = {
             name: executor.submit(fn)

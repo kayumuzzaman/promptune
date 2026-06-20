@@ -104,7 +104,7 @@ def run_server() -> None:
             style: Enhancement style: minimal, balanced, or detailed.
             tier: Force tier (-1=auto, 0=rules, 1=local, 2=cloud).
         """
-        tier_override = tier if tier >= 0 else None
+        tier_override = _validate_tier(tier)
         # Pass the requested style through verbatim. Previously an explicit
         # style="balanced" was collapsed to None — indistinguishable from "not
         # set" — so a client asking for balanced silently got the configured

@@ -778,7 +778,7 @@ def test_engine_context_respects_individual_disable_flags(
         "use_stack_detection": False,
         "max_context_tokens": 500,
     }
-    mocker.patch(
+    collect_context = mocker.patch(
         "promptune.engine.collect_context",
         return_value=ContextFingerprint(
             git=GitContext(
@@ -811,6 +811,12 @@ def test_engine_context_respects_individual_disable_flags(
     result = enhance("debug auth timeout", mock_config)
 
     assert result.tier_used == 2
+    collect_context.assert_called_once_with(
+        timeout_ms=400,
+        include_git=True,
+        include_shell=False,
+        include_tech=False,
+    )
     assert "branch=feature/context-flags" in captured["system_prompt"]
     assert "secret shell command" not in captured["system_prompt"]
     assert "stack=python" not in captured["system_prompt"]

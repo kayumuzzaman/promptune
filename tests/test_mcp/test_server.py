@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from promptune.config import ConfigError
 from promptune.scorer import DimensionScore, ScoreResult
 
 
@@ -342,6 +343,48 @@ class TestRunServer:
         mock_enhance.assert_called_once_with(
             "prompt", style="balanced", tier=None
         )
+
+    def test_registered_enhance_tool_rejects_invalid_negative_tier(
+        self,
+    ) -> None:
+        """Only tier=-1 can request auto mode."""
+        from promptune.mcp import server as mcp_server
+
+        registered: dict[str, Any] = {}
+
+        def fake_tool_decorator() -> Any:
+            def wrapper(fn: Any) -> Any:
+                registered[fn.__name__] = fn
+                return fn
+
+            return wrapper
+
+        mock_fastmcp_class = MagicMock()
+        mock_fastmcp_instance = MagicMock()
+        mock_fastmcp_class.return_value = mock_fastmcp_instance
+        mock_fastmcp_instance.tool.side_effect = fake_tool_decorator
+
+        fake_module = MagicMock()
+        fake_module.FastMCP = mock_fastmcp_class
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mcp": MagicMock(),
+                "mcp.server": MagicMock(),
+                "mcp.server.fastmcp": fake_module,
+            },
+        ), patch(
+            "promptune.mcp.server._tool_enhance",
+            return_value={},
+        ) as mock_enhance:
+            mcp_server.run_server()
+            with pytest.raises(ConfigError, match="Invalid tier"):
+                registered["enhance_prompt"](
+                    "prompt", style="balanced", tier=-2
+                )
+
+        mock_enhance.assert_not_called()
 
     def test_registered_enhance_tool_passes_style_through(
         self,

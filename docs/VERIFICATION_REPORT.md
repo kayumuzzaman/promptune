@@ -12,9 +12,9 @@
 | Date | 2026-06-20 |
 | Branch | fix/gemini-review-hardening |
 | Python | 3.14.3 |
-| Total Tests | 1229 |
-| Test Result | **1223 passed, 6 skipped, 0 failed** |
-| Coverage | **97.27%** (gate ≥ 85%) ✅ |
+| Total Tests | 1231 |
+| Test Result | **1225 passed, 6 skipped, 0 failed** |
+| Coverage | **97.34%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | Actionlint | **PASS** — 0 issues |
@@ -59,15 +59,15 @@
 |--------|-------|------|-------|--------|-------|
 | `promptune/__init__.py` | 1 | 0 | 100% | ✅ | |
 | `promptune/__main__.py` | 2 | 0 | 100% | ✅ | Smoke test added |
-| `promptune/cli.py` | 545 | 10 | 98% | ✅ | style override validation |
+| `promptune/cli.py` | 562 | 10 | 98% | ✅ | style override validation |
 | `promptune/config.py` | 109 | 5 | 95% | ✅ | +auto_enhance defaults |
-| `promptune/context/__init__.py` | 38 | 0 | 100% | ✅ | |
-| `promptune/context/collectors.py` | 154 | 1 | 99% | ✅ | Was 85% |
+| `promptune/context/__init__.py` | 44 | 0 | 100% | ✅ | disabled collector gating |
+| `promptune/context/collectors.py` | 156 | 1 | 99% | ✅ | Was 85% |
 | `promptune/context/ranker.py` | 56 | 1 | 98% | ✅ | |
-| `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
+| `promptune/context/sanitizer.py` | 50 | 2 | 96% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
-| `promptune/daemon/clipboard.py` | 77 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
-| `promptune/daemon/daemon.py` | 278 | 13 | 95% | ✅ | executable-bound PID identity + reuse-safe stop cleanup |
+| `promptune/daemon/clipboard.py` | 78 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
+| `promptune/daemon/daemon.py` | 279 | 13 | 95% | ✅ | executable-bound PID identity + reuse-safe stop cleanup |
 | `promptune/daemon/hotkey.py` | 65 | 0 | 100% | ✅ | Event tap re-enable |
 | `promptune/daemon/ipc.py` | 126 | 10 | 92% | ✅ | non-dict JSON + handler-exception guards |
 | `promptune/daemon/launchagent.py` | 24 | 0 | 100% | ✅ | Creates log parent |
@@ -78,31 +78,31 @@
 | `promptune/daemon/platform/linux_wayland.py` | 316 | 14 | 96% | ✅ | Portal match/session/binding handling hardened |
 | `promptune/daemon/platform/linux_x11.py` | 220 | 0 | 100% | ✅ | Real-display X11 tests + failure propagation |
 | `promptune/daemon/platform/macos.py` | 52 | 1 | 98% | ✅ | |
-| `promptune/daemon/prewarm.py` | 40 | 0 | 100% | ✅ | Timer callback exceptions contained |
-| `promptune/dedup.py` | 64 | 3 | 95% | ✅ | auto cache route filters provider/model |
-| `promptune/engine.py` | 226 | 6 | 97% | ✅ | template aliases + dedup route filters |
+| `promptune/daemon/prewarm.py` | 44 | 0 | 100% | ✅ | Timer callback exceptions contained |
+| `promptune/dedup.py` | 64 | 4 | 94% | ✅ | auto cache route filters provider/model |
+| `promptune/engine.py` | 235 | 6 | 97% | ✅ | template aliases + context collector gating |
 | `promptune/gate.py` | 32 | 0 | 100% | ✅ | Was 69% |
 | `promptune/history.py` | 125 | 5 | 96% | ✅ | close() idempotent + context manager |
 | `promptune/hooks/__init__.py` | 16 | 0 | 100% | ✅ | |
-| `promptune/hooks/claude_code.py` | 79 | 0 | 100% | ✅ | |
-| `promptune/hooks/codex.py` | 61 | 0 | 100% | ✅ | |
+| `promptune/hooks/claude_code.py` | 82 | 0 | 100% | ✅ | |
+| `promptune/hooks/codex.py` | 64 | 0 | 100% | ✅ | |
 | `promptune/mcp/__init__.py` | 0 | 0 | 100% | ✅ | |
-| `promptune/mcp/server.py` | 40 | 1 | 98% | ✅ | validates tool + tier overrides |
+| `promptune/mcp/server.py` | 40 | 0 | 100% | ✅ | validates tool + tier overrides |
 | `promptune/meta_prompt.py` | 56 | 1 | 98% | ✅ | |
 | `promptune/pqs.py` | 50 | 0 | 100% | ✅ | |
 | `promptune/preferences.py` | 68 | 2 | 97% | ✅ | |
 | `promptune/providers/__init__.py` | 50 | 2 | 96% | ✅ | URL-userinfo redaction helpers |
 | `promptune/providers/anthropic.py` | 23 | 0 | 100% | ✅ | |
-| `promptune/providers/local.py` | 41 | 1 | 98% | ✅ | |
+| `promptune/providers/local.py` | 45 | 1 | 98% | ✅ | |
 | `promptune/providers/openai.py` | 27 | 1 | 96% | ✅ | |
-| `promptune/providers/openrouter.py` | 37 | 2 | 95% | ✅ | |
-| `promptune/scorer.py` | 253 | 14 | 94% | ✅ | |
+| `promptune/providers/openrouter.py` | 38 | 2 | 95% | ✅ | |
+| `promptune/scorer.py` | 254 | 14 | 94% | ✅ | |
 | `promptune/setup.py` | 171 | 4 | 98% | ✅ | Optional API key + tier resolver |
 | `promptune/shell.py` | 88 | 0 | 100% | ✅ | |
-| `promptune/templates.py` | 88 | 6 | 93% | ✅ | aliases for documented template values |
+| `promptune/templates.py` | 92 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4245** | **116** | **97.27%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4246** | **113** | **97.34%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -118,6 +118,26 @@
 ---
 
 ## Known Issues
+
+### -13. PR #21 Codex P2 follow-up after Claude rate limit (2026-06-20) — 2 findings [RESOLVED]
+
+Claude stopped at the rate limit after reading two Codex P2 review comments on
+PR #21. Codex resumed from the transcript, confirmed both comments were real,
+and fixed them with RED regression tests first, targeted GREEN runs, full
+lint/type/actionlint/coverage/warning gates, and subagent review.
+
+- **MED** `engine.py` / `context/__init__.py` — context flags masked disabled
+  sources after `collect_context()` had already started every collector, so
+  disabled shell/git/stack collectors still read local data and spent latency.
+  `collect_context()` now accepts `include_git`, `include_shell`, and
+  `include_tech`; the engine passes config flags before collection and disabled
+  collectors keep default empty values. Regressions:
+  `test_engine_context_respects_individual_disable_flags` and
+  `test_collect_context_skips_disabled_collectors`.
+- **MED** `mcp/server.py` — public `enhance_prompt` collapsed any negative tier
+  to auto before validation, so `tier=-2` silently ran as auto. It now validates
+  the raw tool argument through `_validate_tier()` and only maps `-1` to `None`.
+  Regression: `test_registered_enhance_tool_rejects_invalid_negative_tier`.
 
 ### -12. fix/gemini-review-hardening continuation after Codex rate limit (2026-06-20) — 4 findings [RESOLVED]
 

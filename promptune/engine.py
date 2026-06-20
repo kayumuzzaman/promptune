@@ -434,15 +434,19 @@ def enhance(
 
     # Collect context if enabled
     context_cfg = cfg.get("context", {})
-    context_enabled = any([
-        context_cfg.get("use_git", True),
-        context_cfg.get("use_shell_history", True),
-        context_cfg.get("use_stack_detection", True),
-    ])
+    use_git = context_cfg.get("use_git", True)
+    use_shell = context_cfg.get("use_shell_history", True)
+    use_tech = context_cfg.get("use_stack_detection", True)
+    context_enabled = any([use_git, use_shell, use_tech])
     context_fp = None
     if context_enabled:
         context_fp = _context_with_enabled_collectors(
-            collect_context(timeout_ms=400),
+            collect_context(
+                timeout_ms=400,
+                include_git=use_git,
+                include_shell=use_shell,
+                include_tech=use_tech,
+            ),
             context_cfg,
         )
         context_str = rank_context(

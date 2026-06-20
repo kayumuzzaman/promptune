@@ -343,6 +343,49 @@ def test_collect_context_parallel(
     assert result.git.branch == "main"
 
 
+def test_collect_context_skips_disabled_collectors(
+    mocker: MockerFixture,
+) -> None:
+    """Disabled collectors are not submitted."""
+    git = mocker.patch(
+        "promptune.context.collect_git",
+        side_effect=AssertionError("git collector should not run"),
+    )
+    shell = mocker.patch(
+        "promptune.context.collect_shell_history",
+        side_effect=AssertionError("shell collector should not run"),
+    )
+    tech = mocker.patch(
+        "promptune.context.collect_tech_stack",
+        side_effect=AssertionError("tech collector should not run"),
+    )
+    env = mocker.patch(
+        "promptune.context.collect_environment",
+        return_value=EnvironmentContext(
+            in_venv=True,
+            in_container=False,
+            in_ci=False,
+            in_ssh=False,
+        ),
+    )
+
+    result = collect_context(
+        timeout_ms=400,
+        include_git=False,
+        include_shell=False,
+        include_tech=False,
+    )
+
+    git.assert_not_called()
+    shell.assert_not_called()
+    tech.assert_not_called()
+    env.assert_called_once()
+    assert result.git.branch == ""
+    assert result.shell.recent_commands == []
+    assert result.tech.languages == []
+    assert result.env.in_venv is True
+
+
 def test_collect_context_timeout(
     mocker: MockerFixture,
 ) -> None:
