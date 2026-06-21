@@ -508,8 +508,14 @@ def enhance(
                     tier_used = 1
                     provider_name = "local"
                     model_name = cfg["local_llm"]["model"]
-                except (ProviderError, ProviderNotFoundError, ConfigError):
-                    pass
+                except (ProviderError, ProviderNotFoundError, ConfigError) as exc:
+                    # Local being down is a benign fallback to tier 2, not a
+                    # degradation — debug, not warning.
+                    _log.debug(
+                        "Tier 1 (local) unavailable in auto-routing, "
+                        "trying tier 2: %s",
+                        exc,
+                    )
 
             # Try Tier 2 if Tier 1 didn't work
             if tier_used == 0 and max_tier >= 2:
@@ -523,8 +529,13 @@ def enhance(
                     )
                     enhanced = result_text
                     tier_used = 2
-                except (ProviderError, ProviderNotFoundError, ConfigError):
-                    pass
+                except (ProviderError, ProviderNotFoundError, ConfigError) as exc:
+                    # Degrades to tier 0 (no AI) — surface it so a persistent
+                    # auth/config error isn't silently swallowed.
+                    _log.warning(
+                        "Tier 2 failed in auto-routing, using tier 0: %s",
+                        exc,
+                    )
 
     # Re-score final result if AI tier was used
     if tier_used > 0:

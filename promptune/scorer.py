@@ -114,6 +114,24 @@ _FILLER_WORDS = {
 
 # --- Helpers ---
 
+def _count_terms(terms: set[str], words: set[str], text: str) -> int:
+    """Count how many *terms* occur in a prompt.
+
+    Single-word terms must match a whole word (so "do" does not fire inside
+    "document", "put" inside "output", "just" inside "adjust"); multiword
+    phrases ("deal with") fall back to substring matching. Mirrors the word-set
+    intersection already used for ``_PRECISE_VERBS``/``_TECH_TERMS``.
+    """
+    count = 0
+    for term in terms:
+        if " " in term:
+            if term in text:
+                count += 1
+        elif term in words:
+            count += 1
+    return count
+
+
 def _shannon_entropy(words: list[str]) -> float:
     """Calculate Shannon entropy (word-level)."""
     if not words:
@@ -185,7 +203,7 @@ def _score_specificity(
     if tech_count > 0:
         signals.append(f"{tech_count} technical terms")
 
-    vague_count = sum(1 for v in _VAGUE_WORDS if v in prompt.lower())
+    vague_count = _count_terms(_VAGUE_WORDS, lower_words, prompt.lower())
     vague_penalty = min(vague_count * 0.1, 0.5)
     if vague_count > 0:
         signals.append(f"{vague_count} vague words")
@@ -346,9 +364,7 @@ def _score_actionability(
     if precise_count > 0:
         signals.append(f"{precise_count} precise verbs")
 
-    vague_verb_count = sum(
-        1 for v in _VAGUE_VERBS if v in prompt.lower()
-    )
+    vague_verb_count = _count_terms(_VAGUE_VERBS, lower_words, prompt.lower())
     if vague_verb_count > 0:
         signals.append(f"{vague_verb_count} vague verbs")
 
@@ -478,7 +494,8 @@ def _score_conciseness(
         signals.append(f"dense vocabulary (entropy={entropy:.2f})")
 
     lower = prompt.lower()
-    filler_count = sum(1 for f in _FILLER_WORDS if f in lower)
+    lower_words = {w.lower() for w in words}
+    filler_count = _count_terms(_FILLER_WORDS, lower_words, lower)
     filler_penalty = min(filler_count * 0.15, 0.6)
     if filler_count > 0:
         signals.append(f"{filler_count} filler/politeness phrases")

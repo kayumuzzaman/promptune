@@ -12,8 +12,8 @@
 | Date | 2026-06-21 |
 | Branch | main |
 | Python | 3.14.3 |
-| Total Tests | 1237 |
-| Test Result | **1231 passed, 6 skipped, 0 failed** |
+| Total Tests | 1240 |
+| Test Result | **1234 passed, 6 skipped, 0 failed** |
 | Coverage | **97.31%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
@@ -120,7 +120,7 @@
 
 ## Known Issues
 
-### -14. Launch-readiness audit + remediation (2026-06-21) — 6 findings fixed (2 launch + 4 rescan)
+### -14. Launch-readiness audit + remediation (2026-06-21) — 9 findings fixed (2 launch + 7 rescan), 1 deferred
 
 Live verification on `main` (`1b7da28`) passed: `ruff`, `mypy`,
 `actionlint`, full coverage, strict warning gates, package build, `twine check`,
@@ -178,12 +178,13 @@ close, owner-only IPC socket, clobber-safe hook installers.
 **Second rescan (2026-06-21) — 4 parallel fresh-eyes agents + inline core/daemon
 audit.** A follow-up "validate the full codebase" pass dispatched four read-only
 agents (core, providers, cli/context, daemon). cli/context and providers
-reported; core and daemon went unresponsive, so those two domains were
-re-audited inline. Four real findings surfaced — all fixed RED-first; none HIGH.
-The inline core+daemon review (engine, dedup, scorer, tier0, meta_prompt,
-preferences, templates, gate; clipboard, ipc, prewarm, the linux_x11/wayland
-subprocess surface, daemon `_on_hotkey`) found nothing further — notably **no
-shell-injection path**: selected/clipboard text reaches external tools only via
+reported promptly and core reported late; only daemon stayed unresponsive, so it
+was re-audited inline. Eight findings surfaced across the agents (cli 3,
+providers 1, core 4) — seven fixed RED-first (none HIGH), one deferred. An inline
+pass (engine, dedup, scorer, tier0, meta_prompt, preferences, templates, gate;
+clipboard, ipc, prewarm, the linux_x11/wayland subprocess surface, daemon
+`_on_hotkey`) confirmed the security surface — notably **no shell-injection
+path**: selected/clipboard text reaches external tools only via
 stdin (`xclip`/`wl-copy` `input=`) or fixed Ctrl+C/V keycodes
 (`xdotool`/`ydotool key`), never a shell argument, and there is no `shell=True`.
 
@@ -207,6 +208,30 @@ stdin (`xclip`/`wl-copy` `input=`) or fixed Ctrl+C/V keycodes
   framework-detection `except`), discarding already-detected languages. Added
   `UnicodeDecodeError` to both clauses. Regression:
   `test_tech_stack_non_utf8_manifest_keeps_languages`.
+
+Core agent (reported late — caught what the inline pass did not):
+
+- **MED [RESOLVED]** `scorer.py` — vague-verb / vague-word / filler penalties
+  used substring `in` (e.g. "document"→do, "output"→put, "target"→get,
+  "every"→very, "awesome"→some, "adjust"→just) while `_PRECISE_VERBS` used
+  whole-word set matching. The asymmetry under-scored actionability (skewing the
+  `<70` AI-tier routing decision *and* the displayed `promptune score`) and
+  over-counted specificity/conciseness penalties. Added `_count_terms`
+  (whole-word match for single tokens, substring only for multiword phrases).
+  Regressions: `test_actionability_vague_verbs_match_words_not_substrings`,
+  `test_specificity_and_conciseness_match_words_not_substrings`.
+- **LOW [RESOLVED]** `engine.py` auto-routing — tier-1/tier-2 provider failures
+  were swallowed with a bare `pass` (unlike the forced path), so a persistent
+  auth/config error silently degraded to tier 0 with no diagnostic. Tier-1
+  (local) unavailability now logs at `debug` (benign fallback to tier 2) and a
+  tier-2 failure at `warning` (degrades to tier 0). Regression:
+  `test_auto_tier2_failure_is_logged`.
+- **LOW [DEFERRED]** `engine.py` / `dedup.py` — auto-tier dedup scopes the
+  provider/model route but not the enhancement `default_mode`, so changing
+  balanced→detailed can serve a similar prompt's previously-cached result at the
+  wrong verbosity. Still a valid enhancement of the same prompt (mild). A clean
+  fix needs a history schema column (mode isn't stored), disproportionate for a
+  non-security verbosity-staleness; deferred.
 
 ### -13. PR #21 Codex P2 follow-up after Claude rate limit (2026-06-20) — 2 findings [RESOLVED]
 
@@ -759,6 +784,7 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 | ~~P0~~ | ~~Bump package version before next release~~ | ✅ Done | Bumped to 0.2.0 + `[0.2.0]` CHANGELOG; tag/publish pending user go-ahead |
 | ~~P1~~ | ~~Fix stale cloud dedup when current provider credentials are missing~~ | ✅ Done | Cloud route gated on default-provider key; unit + integration RED-first regressions |
 | ~~P3~~ | ~~Rotate daemon log file~~ | Won't fix | Accepted (user call 2026-06-21) — low volume, slow creep; over-engineering for a personal daemon |
+| P3 | Scope auto-tier dedup by `default_mode` | Open | `engine.py`/`dedup.py` — a mode change can serve a cached result at the wrong verbosity; mild, needs a history schema column (rescan -14) |
 | P2 | Add missing PARTIAL test scenarios | Deferred | Task #6 |
 | ~~P2~~ | ~~Fix prewarm timer thread warning~~ | ✅ Done | Timer callback exceptions contained; strict warning run clean |
 | ~~P3~~ | ~~Improve `linux_x11.py` 46% → ≥70%~~ | ✅ Done | 100% mocked + Xvfb CI |

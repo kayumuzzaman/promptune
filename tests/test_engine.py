@@ -483,6 +483,35 @@ def test_dedup_routes_skip_cloud_when_provider_key_missing() -> None:
     assert _dedup_provider_model_routes(cfg) == set()
 
 
+def test_auto_tier2_failure_is_logged(
+    mock_config: dict,
+    mocker: MockerFixture,
+    caplog,
+) -> None:
+    """Auto-routing tier-2 failure must be logged, not silently swallowed.
+
+    The forced-tier path logs a warning, but the auto path used a bare ``pass``,
+    so a persistent auth/config error silently degraded to tier 0 with no
+    diagnostic — the user couldn't tell why the AI tier never engaged.
+    """
+    import logging
+
+    mock_config["local_llm"]["enabled"] = False
+    mock_config["enhancement"]["preference_learning"] = False
+    mocker.patch(
+        "promptune.engine._try_tier2",
+        side_effect=ProviderError("auth failed"),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="promptune.engine"):
+        result = enhance("fix the broken thing", mock_config, record=False)
+
+    assert result.tier_used == 0
+    assert any(
+        "tier 2" in r.getMessage().lower() for r in caplog.records
+    )
+
+
 def test_engine_no_record_when_history_disabled(
     mock_config: dict, tmp_path
 ) -> None:
