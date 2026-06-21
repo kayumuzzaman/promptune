@@ -58,6 +58,35 @@ def test_history_does_not_chmod_existing_configured_parent(
     assert stat.S_IMODE(parent.stat().st_mode) == 0o755
 
 
+def test_history_tightens_existing_wal_sidecars(tmp_path) -> None:
+    """Existing WAL/SHM sidecars must be owner-only like history.db."""
+    import os
+    import stat
+
+    db = tmp_path / "history.db"
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE keep_wal_open (id INTEGER)")
+        conn.execute("INSERT INTO keep_wal_open VALUES (1)")
+        conn.commit()
+
+        wal = db.with_name(f"{db.name}-wal")
+        shm = db.with_name(f"{db.name}-shm")
+        assert wal.exists()
+        assert shm.exists()
+        os.chmod(wal, 0o644)
+        os.chmod(shm, 0o644)
+
+        store = HistoryStore(db_path=db)
+        store.close()
+
+        assert stat.S_IMODE(wal.stat().st_mode) == 0o600
+        assert stat.S_IMODE(shm.stat().st_mode) == 0o600
+    finally:
+        conn.close()
+
+
 def _make_entry(
     original: str = "fix the bug",
     enhanced: str = "Diagnose and fix the auth bug",

@@ -47,7 +47,8 @@ _KEYWORD_PATTERNS: list[re.Pattern[str]] = [
         # Stop unquoted values at rank_context's ` | ` separator, not spaces.
         r"(?P<key>password|passwd|secret|token|api_key|apikey)"
         r"(?P<sep>\s*[=:]\s*)"
-        r"(?:\"[^\"\n]*(?:\"|$)|'[^'\n]*(?:'|$)|"
+        r"(?:\"(?:\\.|[^\"\\\n])*(?:\"|$)|"
+        r"'(?:\\.|[^'\\\n])*(?:'|$)|"
         r"(?:(?!\s+\|\s+)[^\n])+)",
         re.IGNORECASE,
     ),

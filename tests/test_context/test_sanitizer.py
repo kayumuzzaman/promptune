@@ -38,6 +38,14 @@ def test_sanitize_quoted_keyword_value_with_spaces() -> None:
     assert result == 'password=[REDACTED] | frameworks: python'
 
 
+def test_sanitize_escaped_quote_keyword_value_with_spaces() -> None:
+    """Escaped quotes inside keyword secrets must not end redaction early."""
+    text = 'password="abc\\"def ghi" | frameworks=python'
+    result = sanitize(text)
+    assert 'abc\\"def ghi' not in result
+    assert result == "password=[REDACTED] | frameworks=python"
+
+
 def test_sanitize_github_token() -> None:
     """Redacts GitHub personal access tokens."""
     text = "token: ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"

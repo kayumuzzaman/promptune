@@ -56,6 +56,16 @@ def _default_db_path() -> Path:
     return Path.home() / ".local" / "share" / "promptune" / "history.db"
 
 
+def _secure_db_files(db_path: Path) -> None:
+    for path in (
+        db_path,
+        db_path.with_name(f"{db_path.name}-wal"),
+        db_path.with_name(f"{db_path.name}-shm"),
+    ):
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
+
+
 @dataclass
 class HistoryEntry:
     """Single enhancement record."""
@@ -117,9 +127,9 @@ class HistoryStore:
             sqlite3.connect(str(db_path), check_same_thread=False)
         )
         self._conn_inner.execute("PRAGMA journal_mode=WAL")
-        with contextlib.suppress(OSError):
-            os.chmod(db_path, 0o600)
+        _secure_db_files(db_path)
         self._init_schema()
+        _secure_db_files(db_path)
 
     @property
     def _conn(self) -> sqlite3.Connection:

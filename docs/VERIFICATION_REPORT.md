@@ -12,8 +12,8 @@
 | Date | 2026-06-21 |
 | Branch | fix/sync-0.2.0-fixes-to-main (PR #22 → main) |
 | Python | 3.14.3 |
-| Total Tests | 1243 |
-| Test Result | **1237 passed, 6 skipped, 0 failed** |
+| Total Tests | 1245 |
+| Test Result | **1239 passed, 6 skipped, 0 failed** |
 | Coverage | **97.38%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
@@ -83,7 +83,7 @@
 | `promptune/dedup.py` | 64 | 4 | 94% | ✅ | auto cache route filters provider/model |
 | `promptune/engine.py` | 230 | 6 | 97% | ✅ | template aliases + context collector gating |
 | `promptune/gate.py` | 32 | 0 | 100% | ✅ | Was 69% |
-| `promptune/history.py` | 136 | 5 | 96% | ✅ | existing configured parents preserved |
+| `promptune/history.py` | 140 | 5 | 96% | ✅ | existing configured parents and sidecars preserved |
 | `promptune/hooks/__init__.py` | 16 | 0 | 100% | ✅ | |
 | `promptune/hooks/claude_code.py` | 82 | 0 | 100% | ✅ | |
 | `promptune/hooks/codex.py` | 64 | 0 | 100% | ✅ | |
@@ -103,7 +103,7 @@
 | `promptune/templates.py` | 92 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4267** | **112** | **97.38%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4271** | **112** | **97.38%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -119,6 +119,23 @@
 ---
 
 ## Known Issues
+
+### -16. PR #22 Codex second follow-up (2026-06-21) — 2 findings [RESOLVED]
+
+Codex's second review on commit `6b4a00b` raised two valid follow-ups. Both were
+fixed RED-first and verified with affected tests, `ruff`, `mypy`, `actionlint`,
+full coverage, strict warning gates, and package/wheel smoke.
+
+- **HIGH [RESOLVED]** `context/sanitizer.py` — quoted keyword redaction treated
+  escaped quotes (`\"`) as closing delimiters, leaking suffix words from secrets
+  such as `password="abc\"def ghi"`. Quoted value matching now consumes escaped
+  characters before considering the delimiter closed. Regression:
+  `test_sanitize_escaped_quote_keyword_value_with_spaces`.
+- **MED [RESOLVED]** `history.py` — existing `history.db-wal` and
+  `history.db-shm` sidecars from older umasks or another live/crashed connection
+  could remain group/other-readable after only `history.db` was chmodded. The
+  store now tightens the DB plus `-wal`/`-shm` sidecars after WAL setup and after
+  schema initialization. Regression: `test_history_tightens_existing_wal_sidecars`.
 
 ### -15. PR #22 Codex P2 follow-up (2026-06-21) — 3 findings [RESOLVED]
 
