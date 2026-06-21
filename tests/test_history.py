@@ -41,6 +41,23 @@ def test_history_db_and_dir_owner_only(tmp_path) -> None:
     assert stat.S_IMODE(db.parent.stat().st_mode) == 0o700
 
 
+def test_history_does_not_chmod_existing_configured_parent(
+    tmp_path,
+) -> None:
+    """Configured DB paths must not lock down caller-owned directories."""
+    import os
+    import stat
+
+    parent = tmp_path / "shared"
+    parent.mkdir()
+    os.chmod(parent, 0o755)
+
+    store = HistoryStore(db_path=parent / "history.db")
+    store.close()
+
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o755
+
+
 def _make_entry(
     original: str = "fix the bug",
     enhanced: str = "Diagnose and fix the auth bug",

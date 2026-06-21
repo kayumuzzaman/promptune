@@ -35,6 +35,17 @@ def test_specificity_and_conciseness_match_words_not_substrings() -> None:
     assert not any("filler" in s for s in dims["conciseness"].signals)
 
 
+def test_scorer_term_matching_handles_punctuation() -> None:
+    """Whole-word penalties still fire when terms touch punctuation."""
+    dims = score_prompt("Please, do? Maybe, get.").dimensions
+    assert any(
+        "vague verbs" in s for s in dims["actionability"].signals
+    )
+    assert any(
+        "filler" in s for s in dims["conciseness"].signals
+    )
+
+
 def test_detect_intent_matches_regular_plurals() -> None:
     """Plural coding keywords still count (e.g. 'tests' -> 'test')."""
     assert _detect_intent("write tests") == "coding"

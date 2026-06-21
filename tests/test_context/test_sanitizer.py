@@ -27,6 +27,17 @@ def test_sanitize_keyword_value_does_not_swallow_following_signals() -> None:
     assert "frameworks: react" in result
 
 
+def test_sanitize_quoted_keyword_value_with_spaces() -> None:
+    """Quoted/passphrase-style keyword secrets must not leak suffix words."""
+    text = (
+        'password="correct horse battery staple" | '
+        "frameworks: python"
+    )
+    result = sanitize(text)
+    assert "correct horse battery staple" not in result
+    assert result == 'password=[REDACTED] | frameworks: python'
+
+
 def test_sanitize_github_token() -> None:
     """Redacts GitHub personal access tokens."""
     text = "token: ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"

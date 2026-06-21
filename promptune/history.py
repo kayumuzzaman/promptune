@@ -52,6 +52,10 @@ _MIGRATIONS: dict[int, str] = {}
 _MAX_ENTRIES = 10000
 
 
+def _default_db_path() -> Path:
+    return Path.home() / ".local" / "share" / "promptune" / "history.db"
+
+
 @dataclass
 class HistoryEntry:
     """Single enhancement record."""
@@ -95,25 +99,18 @@ class HistoryStore:
         db_path: Path | None = None,
         max_entries: int = _MAX_ENTRIES,
     ) -> None:
+        default_db_path = _default_db_path()
         if db_path is None:
-            db_path = (
-                Path.home()
-                / ".local"
-                / "share"
-                / "promptune"
-                / "history.db"
-            )
+            db_path = default_db_path
 
         db_path = Path(db_path).expanduser()
         self.db_path = db_path
         self._max_entries = max_entries
+        parent_existed = db_path.parent.exists()
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        # History rows store prompts verbatim (potentially sensitive). Lock the
-        # store directory to owner-only BEFORE opening sqlite so the DB and its
-        # WAL/SHM sidecars are never traversable by other users, then tighten the
-        # DB file itself — mirroring the deliberate 0o600 config hardening.
-        with contextlib.suppress(OSError):
-            os.chmod(db_path.parent, 0o700)
+        if db_path == default_db_path or not parent_existed:
+            with contextlib.suppress(OSError):
+                os.chmod(db_path.parent, 0o700)
 
         self._lock = threading.RLock()
         self._conn_inner: sqlite3.Connection | None = (

@@ -111,8 +111,14 @@ _FILLER_WORDS = {
     "i was wondering", "it would be great",
 }
 
+_WORD_RE = re.compile(r"\b[\w']+\b")
+
 
 # --- Helpers ---
+
+def _tokenize_words(prompt: str) -> list[str]:
+    return _WORD_RE.findall(prompt)
+
 
 def _count_terms(terms: set[str], words: set[str], text: str) -> int:
     """Count how many *terms* occur in a prompt.
@@ -531,7 +537,7 @@ _INTENT_WEIGHT_ADJUSTMENTS: dict[str, dict[str, float]] = {
 
 def score_prompt(prompt: str) -> ScoreResult:
     """Score a prompt across 7 dimensions, returning calibrated 0-100."""
-    words = prompt.split()
+    words = _tokenize_words(prompt)
     intent = _detect_intent(prompt)
 
     dimensions: dict[str, DimensionScore] = {

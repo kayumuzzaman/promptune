@@ -10,11 +10,11 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-21 |
-| Branch | main |
+| Branch | fix/sync-0.2.0-fixes-to-main (PR #22 → main) |
 | Python | 3.14.3 |
-| Total Tests | 1240 |
-| Test Result | **1234 passed, 6 skipped, 0 failed** |
-| Coverage | **97.31%** (gate ≥ 85%) ✅ |
+| Total Tests | 1243 |
+| Test Result | **1237 passed, 6 skipped, 0 failed** |
+| Coverage | **97.38%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | Actionlint | **PASS** — 0 issues |
@@ -81,9 +81,9 @@
 | `promptune/daemon/platform/macos.py` | 52 | 1 | 98% | ✅ | |
 | `promptune/daemon/prewarm.py` | 44 | 0 | 100% | ✅ | Timer callback exceptions contained |
 | `promptune/dedup.py` | 64 | 4 | 94% | ✅ | auto cache route filters provider/model |
-| `promptune/engine.py` | 229 | 6 | 97% | ✅ | template aliases + context collector gating |
+| `promptune/engine.py` | 230 | 6 | 97% | ✅ | template aliases + context collector gating |
 | `promptune/gate.py` | 32 | 0 | 100% | ✅ | Was 69% |
-| `promptune/history.py` | 125 | 5 | 96% | ✅ | close() idempotent + context manager |
+| `promptune/history.py` | 136 | 5 | 96% | ✅ | existing configured parents preserved |
 | `promptune/hooks/__init__.py` | 16 | 0 | 100% | ✅ | |
 | `promptune/hooks/claude_code.py` | 82 | 0 | 100% | ✅ | |
 | `promptune/hooks/codex.py` | 64 | 0 | 100% | ✅ | |
@@ -97,13 +97,13 @@
 | `promptune/providers/local.py` | 45 | 1 | 98% | ✅ | |
 | `promptune/providers/openai.py` | 27 | 1 | 96% | ✅ | |
 | `promptune/providers/openrouter.py` | 38 | 2 | 95% | ✅ | |
-| `promptune/scorer.py` | 254 | 14 | 94% | ✅ | |
+| `promptune/scorer.py` | 267 | 12 | 96% | ✅ | punctuation-aware term matching |
 | `promptune/setup.py` | 171 | 4 | 98% | ✅ | Optional API key + tier resolver |
-| `promptune/shell.py` | 88 | 0 | 100% | ✅ | |
+| `promptune/shell.py` | 90 | 0 | 100% | ✅ | |
 | `promptune/templates.py` | 92 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4240** | **114** | **97.31%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4267** | **112** | **97.38%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -119,6 +119,30 @@
 ---
 
 ## Known Issues
+
+### -15. PR #22 Codex P2 follow-up (2026-06-21) — 3 findings [RESOLVED]
+
+Codex review on PR #22 surfaced three valid P2 follow-ups. All were fixed with
+RED-first regressions, then verified with targeted tests, `ruff`, `mypy`,
+`actionlint`, full coverage, strict warning gates, and package/wheel smoke.
+
+- **MED [RESOLVED]** `context/sanitizer.py` — bounding keyword values to `\S+`
+  preserved later ` | `-joined context signals but leaked quoted/passphrase-style
+  values after the first space (`password="correct horse battery staple"`).
+  Keyword redaction now handles quoted values and stops unquoted values at the
+  joined-context separator instead of raw whitespace. Regression:
+  `test_sanitize_quoted_keyword_value_with_spaces`.
+- **MED [RESOLVED]** `scorer.py` — whole-word vague/filler matching used tokens
+  from `prompt.split()`, so punctuation-adjacent terms (`please,`, `do?`,
+  `get.`) were missed and could under-penalize prompts near the tier-routing
+  threshold. Scoring now tokenizes by word boundary before set matching.
+  Regression: `test_scorer_term_matching_handles_punctuation`.
+- **LOW [RESOLVED]** `history.py` — `HistoryStore` chmodded every configured
+  DB parent directory to `0o700`, which could lock down caller-owned directories
+  such as `/tmp` or project folders. It now tightens the default Promptune
+  history dir and app-created missing parents, while preserving existing
+  configured parent modes; the DB file itself remains `0o600`. Regression:
+  `test_history_does_not_chmod_existing_configured_parent`.
 
 ### -14. Launch-readiness audit + remediation (2026-06-21) — 9 findings fixed (2 launch + 7 rescan), 1 deferred
 
