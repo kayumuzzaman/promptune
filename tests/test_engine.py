@@ -373,6 +373,56 @@ def test_engine_auto_dedup_does_not_reuse_ai_result_when_only_tier0_possible(
     assert result.enhanced != "Cloud cached result"
 
 
+def test_engine_auto_dedup_skips_cloud_cache_when_provider_key_missing(
+    mock_config: dict,
+    tmp_path,
+    mocker: MockerFixture,
+) -> None:
+    """A missing default-provider key must not serve a stale cloud cache hit.
+
+    Repro of the stale-cloud dedup bug: local disabled, max_tier 2, the default
+    provider's key is gone (another cloud key is still present), and a prior
+    cloud row exists. The only reachable route now is tier 0, so the cloud cache
+    entry must not be reused — `enhance()` must run fresh and return tier 0, not
+    the cached cloud text with tier_used == -1.
+    """
+    from promptune.history import HistoryEntry, HistoryStore
+
+    db = tmp_path / "history.db"
+    prompt = "debug the python authentication failure in detail"
+    mock_config["history"]["db_path"] = str(db)
+    mock_config["local_llm"]["enabled"] = False
+    mock_config["api_keys"]["claude"] = ""
+    mock_config["api_keys"]["openai"] = "sk-other"
+    mock_config["enhancement"]["preference_learning"] = False
+    mocker.patch("promptune.engine._detect_project_root", return_value="/project")
+
+    with HistoryStore(db_path=db) as store:
+        store.record(
+            HistoryEntry(
+                original=prompt,
+                enhanced="Cloud cached result",
+                decision="accept",
+                edit_result=None,
+                tier_used=2,
+                provider="claude",
+                format_style="auto",
+                model=mock_config["provider"]["model_claude"],
+                score_before=20,
+                score_after=90,
+                latency_ms=8.0,
+                rules_applied=[],
+                context_json=None,
+                project_root="/project",
+            )
+        )
+
+    result = enhance(prompt, mock_config)
+
+    assert result.tier_used == 0
+    assert result.enhanced != "Cloud cached result"
+
+
 def test_dedup_routes_keep_empty_model_to_match_recorded_entries() -> None:
     """Blanked models must stay "" in routes to match recorded history.
 
@@ -399,16 +449,38 @@ def test_dedup_routes_keep_empty_model_to_match_recorded_entries() -> None:
 
 
 def test_dedup_routes_use_cloud_when_local_disabled() -> None:
-    """Cloud route remains dedup-eligible when local is not first choice."""
+    """Cloud route stays dedup-eligible when local is off and the key exists."""
     from promptune.engine import _dedup_provider_model_routes
 
     cfg = {
         "provider": {"default": "claude", "model_claude": ""},
         "local_llm": {"enabled": False, "model": ""},
         "enhancement": {"max_tier": 2},
+        "api_keys": {"claude": "sk-ant-present"},
     }
 
     assert _dedup_provider_model_routes(cfg) == {("claude", "")}
+
+
+def test_dedup_routes_skip_cloud_when_provider_key_missing() -> None:
+    """Cloud route is dropped when the default provider has no API key.
+
+    Regression guard for the stale-cloud bug: `enhance()` can only reach the
+    cloud route when the provider key exists — `_try_tier2` raises ConfigError
+    otherwise and falls back to tier 0. The dedup route set must mirror that
+    reachability, or a stale cached cloud result is served for a config that can
+    no longer produce one (another provider's key being present is irrelevant).
+    """
+    from promptune.engine import _dedup_provider_model_routes
+
+    cfg = {
+        "provider": {"default": "claude", "model_claude": "claude-haiku-4-5"},
+        "local_llm": {"enabled": False, "model": ""},
+        "enhancement": {"max_tier": 2},
+        "api_keys": {"openai": "sk-other"},
+    }
+
+    assert _dedup_provider_model_routes(cfg) == set()
 
 
 def test_engine_no_record_when_history_disabled(

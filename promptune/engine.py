@@ -129,8 +129,13 @@ def _dedup_provider_model_routes(
         routes.add(("local", cfg["local_llm"].get("model", "")))
     elif max_tier >= 2:
         provider = cfg["provider"]["default"]
-        model = cfg["provider"].get(f"model_{provider}", "")
-        routes.add((provider, model))
+        # Cloud route is only reachable when the provider key exists — _try_tier2
+        # raises ConfigError and falls back to tier 0 otherwise. Mirror that here
+        # or a stale cached cloud result is served for a config that can no
+        # longer produce one.
+        if cfg.get("api_keys", {}).get(provider, ""):
+            model = cfg["provider"].get(f"model_{provider}", "")
+            routes.add((provider, model))
     return routes
 
 

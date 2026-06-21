@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-21
+
 ### Fixed
 
+- `engine.enhance()` auto-tier dedup no longer serves a stale cached cloud result when the default provider's API key is missing. The dedup route set now mirrors actual reachability — the cloud route is only eligible when that provider's key is present (`_try_tier2` would otherwise raise `ConfigError` and fall back to tier 0). A config that can only reach tier 0 is never handed a previously-cached cloud enhancement (`tier_used == -1`), even when a *different* cloud provider's key is configured
 - Tier 0 politeness removal no longer strips politeness words that appear as substrings inside larger words (e.g. "pleased" was being mangled to "d"); phrases now match on word boundaries only
 - Tier 0 politeness removal no longer leaves orphaned or doubled punctuation after stripping a phrase (e.g. "fix the parser, please." now yields "fix the parser." instead of "fix the parser,."); legitimate sentence-final `.`/`!`/`?` are preserved
 - `engine.enhance()` now logs swallowed history/dedup/preferences and template-injection failures at `warning` level (was `debug`), surfacing silent best-effort feature loss without breaking graceful degradation
