@@ -8,6 +8,44 @@ from promptune.scorer import (
 )
 
 
+def test_actionability_vague_verbs_match_words_not_substrings() -> None:
+    """Vague-verb penalty must not fire on words that merely contain a verb.
+
+    "document"/"output"/"target" contain do/put/get but are not vague verbs; a
+    substring check over-penalised actionability (skewing routing + the
+    displayed score). Mirrors the word-set matching already used for precise
+    verbs.
+    """
+    result = score_prompt("Build a document parser for the output target")
+    action = result.dimensions["actionability"]
+    assert not any("vague verb" in s for s in action.signals)
+
+
+def test_specificity_and_conciseness_match_words_not_substrings() -> None:
+    """Vague-word / filler penalties must not fire on innocent substrings.
+
+    "every" contains "very", "awesome" contains "some", "adjustment" contains
+    "just" — none are themselves vague/filler words, so a substring check
+    over-penalised specificity and conciseness.
+    """
+    dims = score_prompt(
+        "Configure every awesome adjustment carefully"
+    ).dimensions
+    assert not any("vague word" in s for s in dims["specificity"].signals)
+    assert not any("filler" in s for s in dims["conciseness"].signals)
+
+
+def test_scorer_term_matching_handles_punctuation() -> None:
+    """Whole-word penalties still fire when terms touch punctuation."""
+    dims = score_prompt("Please, do? Maybe, get.").dimensions
+    assert any(
+        "vague verbs" in s for s in dims["actionability"].signals
+    )
+    assert any(
+        "filler" in s for s in dims["conciseness"].signals
+    )
+
+
 def test_detect_intent_matches_regular_plurals() -> None:
     """Plural coding keywords still count (e.g. 'tests' -> 'test')."""
     assert _detect_intent("write tests") == "coding"

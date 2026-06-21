@@ -253,6 +253,27 @@ def test_tech_stack_node(
     assert "react" in result.frameworks
 
 
+def test_tech_stack_non_utf8_manifest_keeps_languages(
+    tmp_path, mocker: MockerFixture
+) -> None:
+    """A non-UTF-8 manifest must not discard already-detected languages.
+
+    read_text() raises UnicodeDecodeError (a ValueError, not OSError/
+    JSONDecodeError) on invalid bytes; framework detection must swallow it so
+    the package.json language marker survives — mirroring the null-dependencies
+    guard.
+    """
+    (tmp_path / "package.json").write_bytes(b"\xff\xff\xff not utf-8")
+    mocker.patch(
+        "promptune.context.collectors._get_project_root",
+        return_value=tmp_path,
+    )
+
+    result = collect_tech_stack()
+
+    assert "javascript" in result.languages
+
+
 def test_tech_stack_no_markers(
     tmp_path, mocker: MockerFixture
 ) -> None:

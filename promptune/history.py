@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
 import sqlite3
 import threading
 from dataclasses import dataclass
@@ -50,6 +52,20 @@ _MIGRATIONS: dict[int, str] = {}
 _MAX_ENTRIES = 10000
 
 
+def _default_db_path() -> Path:
+    return Path.home() / ".local" / "share" / "promptune" / "history.db"
+
+
+def _secure_db_files(db_path: Path) -> None:
+    for path in (
+        db_path,
+        db_path.with_name(f"{db_path.name}-wal"),
+        db_path.with_name(f"{db_path.name}-shm"),
+    ):
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
+
+
 @dataclass
 class HistoryEntry:
     """Single enhancement record."""
@@ -93,26 +109,27 @@ class HistoryStore:
         db_path: Path | None = None,
         max_entries: int = _MAX_ENTRIES,
     ) -> None:
+        default_db_path = _default_db_path()
         if db_path is None:
-            db_path = (
-                Path.home()
-                / ".local"
-                / "share"
-                / "promptune"
-                / "history.db"
-            )
+            db_path = default_db_path
 
         db_path = Path(db_path).expanduser()
         self.db_path = db_path
         self._max_entries = max_entries
+        parent_existed = db_path.parent.exists()
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        if db_path == default_db_path or not parent_existed:
+            with contextlib.suppress(OSError):
+                os.chmod(db_path.parent, 0o700)
 
         self._lock = threading.RLock()
         self._conn_inner: sqlite3.Connection | None = (
             sqlite3.connect(str(db_path), check_same_thread=False)
         )
         self._conn_inner.execute("PRAGMA journal_mode=WAL")
+        _secure_db_files(db_path)
         self._init_schema()
+        _secure_db_files(db_path)
 
     @property
     def _conn(self) -> sqlite3.Connection:

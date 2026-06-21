@@ -9,17 +9,18 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-20 |
-| Branch | fix/gemini-review-hardening |
+| Date | 2026-06-21 |
+| Branch | fix/sync-0.2.0-fixes-to-main (PR #22 → main) |
 | Python | 3.14.3 |
-| Total Tests | 1231 |
-| Test Result | **1225 passed, 6 skipped, 0 failed** |
-| Coverage | **97.33%** (gate ≥ 85%) ✅ |
+| Total Tests | 1245 |
+| Test Result | **1239 passed, 6 skipped, 0 failed** |
+| Coverage | **97.38%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
 | Actionlint | **PASS** — 0 issues |
 | ResourceWarnings | **0** (verified with `-W error::ResourceWarning`) ✅ |
 | Pytest Warnings | **0** (verified with `-W error::pytest.PytestUnhandledThreadExceptionWarning`) ✅ |
+| Build / Twine / Wheel Smoke | **PASS** — sdist/wheel built, `twine check` passed, fresh wheel install and CLI smoke passed |
 
 ---
 
@@ -64,7 +65,7 @@
 | `promptune/context/__init__.py` | 44 | 0 | 100% | ✅ | disabled collector gating |
 | `promptune/context/collectors.py` | 156 | 1 | 99% | ✅ | Was 85% |
 | `promptune/context/ranker.py` | 56 | 1 | 98% | ✅ | |
-| `promptune/context/sanitizer.py` | 50 | 2 | 96% | ✅ | |
+| `promptune/context/sanitizer.py` | 50 | 3 | 94% | ✅ | |
 | `promptune/daemon/__init__.py` | 0 | 0 | 100% | ✅ | |
 | `promptune/daemon/clipboard.py` | 78 | 3 | 96% | ✅ | macOS coverage no longer globally omitted |
 | `promptune/daemon/daemon.py` | 279 | 13 | 95% | ✅ | executable-bound PID identity + reuse-safe stop cleanup |
@@ -80,9 +81,9 @@
 | `promptune/daemon/platform/macos.py` | 52 | 1 | 98% | ✅ | |
 | `promptune/daemon/prewarm.py` | 44 | 0 | 100% | ✅ | Timer callback exceptions contained |
 | `promptune/dedup.py` | 64 | 4 | 94% | ✅ | auto cache route filters provider/model |
-| `promptune/engine.py` | 229 | 6 | 97% | ✅ | template aliases + context collector gating |
+| `promptune/engine.py` | 230 | 6 | 97% | ✅ | template aliases + context collector gating |
 | `promptune/gate.py` | 32 | 0 | 100% | ✅ | Was 69% |
-| `promptune/history.py` | 125 | 5 | 96% | ✅ | close() idempotent + context manager |
+| `promptune/history.py` | 140 | 5 | 96% | ✅ | existing configured parents and sidecars preserved |
 | `promptune/hooks/__init__.py` | 16 | 0 | 100% | ✅ | |
 | `promptune/hooks/claude_code.py` | 82 | 0 | 100% | ✅ | |
 | `promptune/hooks/codex.py` | 64 | 0 | 100% | ✅ | |
@@ -96,13 +97,13 @@
 | `promptune/providers/local.py` | 45 | 1 | 98% | ✅ | |
 | `promptune/providers/openai.py` | 27 | 1 | 96% | ✅ | |
 | `promptune/providers/openrouter.py` | 38 | 2 | 95% | ✅ | |
-| `promptune/scorer.py` | 254 | 14 | 94% | ✅ | |
+| `promptune/scorer.py` | 267 | 12 | 96% | ✅ | punctuation-aware term matching |
 | `promptune/setup.py` | 171 | 4 | 98% | ✅ | Optional API key + tier resolver |
-| `promptune/shell.py` | 88 | 0 | 100% | ✅ | |
+| `promptune/shell.py` | 90 | 0 | 100% | ✅ | |
 | `promptune/templates.py` | 92 | 6 | 93% | ✅ | aliases for documented template values |
 | `promptune/tier0.py` | 152 | 2 | 99% | ✅ | |
 | `promptune/tui.py` | 160 | 3 | 98% | ✅ | |
-| **TOTAL** | **4240** | **113** | **97.33%** | ✅ | Gate: ≥ 85% |
+| **TOTAL** | **4271** | **112** | **97.38%** | ✅ | Gate: ≥ 85% |
 
 **Coverage status key:**
 - ✅ = ≥ 90% (meets target)
@@ -118,6 +119,160 @@
 ---
 
 ## Known Issues
+
+### -16. PR #22 Codex second follow-up (2026-06-21) — 2 findings [RESOLVED]
+
+Codex's second review on commit `6b4a00b` raised two valid follow-ups. Both were
+fixed RED-first and verified with affected tests, `ruff`, `mypy`, `actionlint`,
+full coverage, strict warning gates, and package/wheel smoke.
+
+- **HIGH [RESOLVED]** `context/sanitizer.py` — quoted keyword redaction treated
+  escaped quotes (`\"`) as closing delimiters, leaking suffix words from secrets
+  such as `password="abc\"def ghi"`. Quoted value matching now consumes escaped
+  characters before considering the delimiter closed. Regression:
+  `test_sanitize_escaped_quote_keyword_value_with_spaces`.
+- **MED [RESOLVED]** `history.py` — existing `history.db-wal` and
+  `history.db-shm` sidecars from older umasks or another live/crashed connection
+  could remain group/other-readable after only `history.db` was chmodded. The
+  store now tightens the DB plus `-wal`/`-shm` sidecars after WAL setup and after
+  schema initialization. Regression: `test_history_tightens_existing_wal_sidecars`.
+
+### -15. PR #22 Codex P2 follow-up (2026-06-21) — 3 findings [RESOLVED]
+
+Codex review on PR #22 surfaced three valid P2 follow-ups. All were fixed with
+RED-first regressions, then verified with targeted tests, `ruff`, `mypy`,
+`actionlint`, full coverage, strict warning gates, and package/wheel smoke.
+
+- **MED [RESOLVED]** `context/sanitizer.py` — bounding keyword values to `\S+`
+  preserved later ` | `-joined context signals but leaked quoted/passphrase-style
+  values after the first space (`password="correct horse battery staple"`).
+  Keyword redaction now handles quoted values and stops unquoted values at the
+  joined-context separator instead of raw whitespace. Regression:
+  `test_sanitize_quoted_keyword_value_with_spaces`.
+- **MED [RESOLVED]** `scorer.py` — whole-word vague/filler matching used tokens
+  from `prompt.split()`, so punctuation-adjacent terms (`please,`, `do?`,
+  `get.`) were missed and could under-penalize prompts near the tier-routing
+  threshold. Scoring now tokenizes by word boundary before set matching.
+  Regression: `test_scorer_term_matching_handles_punctuation`.
+- **LOW [RESOLVED]** `history.py` — `HistoryStore` chmodded every configured
+  DB parent directory to `0o700`, which could lock down caller-owned directories
+  such as `/tmp` or project folders. It now tightens the default Promptune
+  history dir and app-created missing parents, while preserving existing
+  configured parent modes; the DB file itself remains `0o600`. Regression:
+  `test_history_does_not_chmod_existing_configured_parent`.
+
+### -14. Launch-readiness audit + remediation (2026-06-21) — 9 findings fixed (2 launch + 7 rescan), 1 deferred
+
+Live verification on `main` (`1b7da28`) passed: `ruff`, `mypy`,
+`actionlint`, full coverage, strict warning gates, package build, `twine check`,
+fresh wheel install, CLI help/version, Tier 0 enhance, and score JSON smoke.
+GitHub also reported latest `main` CI and Gemini Code Review successful, with
+no open PRs or issues. Both launch findings are now remediated and a
+full-codebase rescan found no new HIGH issue.
+
+- **HIGH [RESOLVED — metadata bumped; tag/publish pending user confirm]**
+  `pyproject.toml` / `promptune/__init__.py` / changelog — `main` was 16 commits
+  ahead of tag `v0.1.0` while metadata still said `0.1.0`, which would collide
+  with the immutable PyPI `0.1.0`. Bumped package metadata to **0.2.0** (minor:
+  the unreleased range adds the MCP server and auto-enhance gate) and cut a
+  `[0.2.0] - 2026-06-21` CHANGELOG section. Tagging and the release workflow are
+  intentionally left for explicit user go-ahead.
+- **HIGH [RESOLVED]** `engine.py` / `dedup.py` — route-scoped dedup could serve a
+  stale cloud result when the current config cannot execute that cloud provider
+  (local disabled, default provider key missing, another provider key present,
+  prior Claude history row → `enhance()` returned `tier_used=-1` with the stale
+  cached result). `_dedup_provider_model_routes()` now adds the cloud route only
+  when the default provider's API key is present, mirroring `_try_tier2`
+  reachability (the `elif`/local-preference structure is unchanged — see the
+  documented false-positive note in §-12). RED-first regressions:
+  `test_dedup_routes_skip_cloud_when_provider_key_missing` (unit) and
+  `test_engine_auto_dedup_skips_cloud_cache_when_provider_key_missing`
+  (integration); both fail without the fix (`tier_used == -1`).
+
+**Full-codebase rescan (2026-06-21) — 3 findings, none release-blocking.** A
+read-only audit traced real paths across engine, dedup, history, providers,
+config, context/sanitizer, ipc, templates, mcp, preferences, clipboard, prewarm,
+daemon lifecycle, and hooks. Verified sound: provider-error api_key/URL-userinfo
+redaction, atomic `0o600` key writes, sanitizer coverage, idempotent sqlite
+close, owner-only IPC socket, clobber-safe hook installers.
+
+- **MED [WON'T FIX — would regress override]** `config.py:158`
+  `_auto_downgrade_tier` uses `any(api_keys.values())` rather than the default
+  provider's key, so `doctor`/status can report tier 2 when the default provider
+  has no key. A naive default-only check regresses `--provider <other>`:
+  `_auto_downgrade_tier` runs before CLI overrides and `_validate` only runs with
+  `validate_keys=True` (never in the CLI enhance path), so tier would be capped
+  at load before the override applies. The correctness hole this enabled is
+  already closed at the dedup layer; the residual is cosmetic status reporting,
+  best fixed in the `doctor` layer if desired. Left as-is.
+- **MED-LOW [WON'T FIX — accepted]** `daemon.py:498` — daemon log file is not
+  rotated (`logging.basicConfig`, existing TODO at `:493`); grows unbounded on an
+  always-on daemon. Per user (2026-06-21): skip. Volume is low (a few lines per
+  hotkey press), so it is slow creep (~tens of MB/year under heavy use), not a
+  hazard; `RotatingFileHandler` + the TODO's SIGHUP/logrotate handler is
+  over-engineering for a personal single-user daemon.
+- **LOW [BY DESIGN]** `daemon.py:341` `_on_hotkey` calls `enhance(record=True)`,
+  logging each hotkey paste as `accept`. Unlike the gate (no accept surface), the
+  daemon pastes the result and offers undo, so a non-undo is arguably an implicit
+  accept. Left as-is; documented.
+
+**Second rescan (2026-06-21) — 4 parallel fresh-eyes agents + inline core/daemon
+audit.** A follow-up "validate the full codebase" pass dispatched four read-only
+agents (core, providers, cli/context, daemon). cli/context and providers
+reported promptly and core reported late; only daemon stayed unresponsive, so it
+was re-audited inline. Eight findings surfaced across the agents (cli 3,
+providers 1, core 4) — seven fixed RED-first (none HIGH), one deferred. An inline
+pass (engine, dedup, scorer, tier0, meta_prompt, preferences, templates, gate;
+clipboard, ipc, prewarm, the linux_x11/wayland subprocess surface, daemon
+`_on_hotkey`) confirmed the security surface — notably **no shell-injection
+path**: selected/clipboard text reaches external tools only via
+stdin (`xclip`/`wl-copy` `input=`) or fixed Ctrl+C/V keycodes
+(`xdotool`/`ydotool key`), never a shell argument, and there is no `shell=True`.
+
+- **MED [RESOLVED]** `shell.py` — raw `--key` passthrough was validated by an
+  incomplete denylist (missing `< > ( ) \`) then emitted UNQUOTED into zsh
+  `bindkey {key}` / fish `bind {key}`, so a space-free process-substitution key
+  like `<(reboot)` executed when the widget is eval'd (bash was already
+  single-quoted). Replaced with a strict allowlist. Regression:
+  `test_raw_passthrough_process_substitution_rejected`.
+- **LOW [RESOLVED]** `history.py` — the DB and its WAL/SHM sidecars were created
+  under the default umask (group/other-readable) while storing prompts verbatim.
+  The store dir is now `0o700` and the DB `0o600`, matching the config hardening.
+  Regression: `test_history_db_and_dir_owner_only`.
+- **LOW [RESOLVED]** `context/sanitizer.py` — keyword redaction used a greedy
+  `[^\n]+` value, so on the single ` | `-joined context line one `token=`
+  substring redacted every later signal. Bounded to `\S+`; the high-entropy pass
+  still backstops space-separated secrets. Regression:
+  `test_sanitize_keyword_value_does_not_swallow_following_signals`.
+- **LOW [RESOLVED]** `context/collectors.py` — a non-UTF-8 `package.json` /
+  `pyproject.toml` raised `UnicodeDecodeError` (a `ValueError`, uncaught by the
+  framework-detection `except`), discarding already-detected languages. Added
+  `UnicodeDecodeError` to both clauses. Regression:
+  `test_tech_stack_non_utf8_manifest_keeps_languages`.
+
+Core agent (reported late — caught what the inline pass did not):
+
+- **MED [RESOLVED]** `scorer.py` — vague-verb / vague-word / filler penalties
+  used substring `in` (e.g. "document"→do, "output"→put, "target"→get,
+  "every"→very, "awesome"→some, "adjust"→just) while `_PRECISE_VERBS` used
+  whole-word set matching. The asymmetry under-scored actionability (skewing the
+  `<70` AI-tier routing decision *and* the displayed `promptune score`) and
+  over-counted specificity/conciseness penalties. Added `_count_terms`
+  (whole-word match for single tokens, substring only for multiword phrases).
+  Regressions: `test_actionability_vague_verbs_match_words_not_substrings`,
+  `test_specificity_and_conciseness_match_words_not_substrings`.
+- **LOW [RESOLVED]** `engine.py` auto-routing — tier-1/tier-2 provider failures
+  were swallowed with a bare `pass` (unlike the forced path), so a persistent
+  auth/config error silently degraded to tier 0 with no diagnostic. Tier-1
+  (local) unavailability now logs at `debug` (benign fallback to tier 2) and a
+  tier-2 failure at `warning` (degrades to tier 0). Regression:
+  `test_auto_tier2_failure_is_logged`.
+- **LOW [DEFERRED]** `engine.py` / `dedup.py` — auto-tier dedup scopes the
+  provider/model route but not the enhancement `default_mode`, so changing
+  balanced→detailed can serve a similar prompt's previously-cached result at the
+  wrong verbosity. Still a valid enhancement of the same prompt (mild). A clean
+  fix needs a history schema column (mode isn't stored), disproportionate for a
+  non-security verbosity-staleness; deferred.
 
 ### -13. PR #21 Codex P2 follow-up after Claude rate limit (2026-06-20) — 2 findings [RESOLVED]
 
@@ -667,6 +822,10 @@ A parallel sub-agent review of the whole codebase surfaced 8 latent defects
 | ~~P2~~ | ~~Improve `templates.py` 89% → ≥90%~~ | ✅ Done | 93% |
 | ~~P1~~ | ~~Improve `gate.py` 69% → ≥90%~~ | ✅ Done | 100% |
 | ~~P1~~ | ~~Improve `mcp/server.py` 53% → ≥90%~~ | ✅ Done | 100% |
+| ~~P0~~ | ~~Bump package version before next release~~ | ✅ Done | Bumped to 0.2.0 + `[0.2.0]` CHANGELOG; tag/publish pending user go-ahead |
+| ~~P1~~ | ~~Fix stale cloud dedup when current provider credentials are missing~~ | ✅ Done | Cloud route gated on default-provider key; unit + integration RED-first regressions |
+| ~~P3~~ | ~~Rotate daemon log file~~ | Won't fix | Accepted (user call 2026-06-21) — low volume, slow creep; over-engineering for a personal daemon |
+| P3 | Scope auto-tier dedup by `default_mode` | Open | `engine.py`/`dedup.py` — a mode change can serve a cached result at the wrong verbosity; mild, needs a history schema column (rescan -14) |
 | P2 | Add missing PARTIAL test scenarios | Deferred | Task #6 |
 | ~~P2~~ | ~~Fix prewarm timer thread warning~~ | ✅ Done | Timer callback exceptions contained; strict warning run clean |
 | ~~P3~~ | ~~Improve `linux_x11.py` 46% → ≥70%~~ | ✅ Done | 100% mocked + Xvfb CI |

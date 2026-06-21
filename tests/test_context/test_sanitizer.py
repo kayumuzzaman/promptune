@@ -13,6 +13,39 @@ def test_sanitize_api_key_sk_prefix() -> None:
     assert "[REDACTED]" in result
 
 
+def test_sanitize_keyword_value_does_not_swallow_following_signals() -> None:
+    """A bounded keyword value must not redact later signals on a joined line.
+
+    rank_context sanitizes the single ` | `-joined context line, so a greedy
+    value match after one `token=`/`api_key=` substring used to wipe every
+    later signal (errors, frameworks, ...). The value is bounded to non-space.
+    """
+    text = "token=abc | error: real failure here | frameworks: react"
+    result = sanitize(text)
+    assert "token=[REDACTED]" in result
+    assert "error: real failure here" in result
+    assert "frameworks: react" in result
+
+
+def test_sanitize_quoted_keyword_value_with_spaces() -> None:
+    """Quoted/passphrase-style keyword secrets must not leak suffix words."""
+    text = (
+        'password="correct horse battery staple" | '
+        "frameworks: python"
+    )
+    result = sanitize(text)
+    assert "correct horse battery staple" not in result
+    assert result == 'password=[REDACTED] | frameworks: python'
+
+
+def test_sanitize_escaped_quote_keyword_value_with_spaces() -> None:
+    """Escaped quotes inside keyword secrets must not end redaction early."""
+    text = 'password="abc\\"def ghi" | frameworks=python'
+    result = sanitize(text)
+    assert 'abc\\"def ghi' not in result
+    assert result == "password=[REDACTED] | frameworks=python"
+
+
 def test_sanitize_github_token() -> None:
     """Redacts GitHub personal access tokens."""
     text = "token: ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"
