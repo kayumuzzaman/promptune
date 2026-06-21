@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 
-# Shell metacharacters that could break out of the quoted bind line and inject
-# commands when the generated widget is eval'd.
+# Shell metacharacters that could break out of a quoted bind line. Used to reject
+# the single character after a modifier in the canonical "ctrl+<char>" form
+# (that path emits the char quoted/escaped, so a denylist suffices there).
 _UNSAFE_KEY_CHARS = "'\"`;$&| \t\n\r"
+
+# Raw shell-native keys (canonical with no '+') are emitted verbatim and
+# UNQUOTED into the zsh `bindkey`/fish `bind` line, so they are restricted by a
+# strict allowlist — not a denylist — to the characters real zsh/bash/fish key
+# syntax uses (letters, digits, and ^ [ ] \ - _). This makes it impossible for
+# injection metacharacters like < > ( ) $ ` ; | & or whitespace to reach the
+# bind line, closing process-substitution payloads such as `<(reboot)`.
+_SAFE_RAW_KEY = re.compile(r"\A[A-Za-z0-9^\[\]\\_-]+\Z")
 
 
 def _translate_key(canonical: str, shell: str) -> str:
@@ -17,13 +27,13 @@ def _translate_key(canonical: str, shell: str) -> str:
     If no '+' separator is found, passes through verbatim (raw shell-native key).
     """
     if "+" not in canonical:
-        # Raw shell-native key passthrough. Reject shell metacharacters so a
-        # crafted --key can't break out of the generated quoted bind line and
-        # inject commands when the widget is eval'd.
-        if any(c in canonical for c in _UNSAFE_KEY_CHARS):
+        # Raw shell-native key passthrough. Restrict to a strict allowlist so a
+        # crafted --key can't break out of the (unquoted) generated bind line
+        # and inject commands when the widget is eval'd.
+        if not _SAFE_RAW_KEY.match(canonical):
             raise ValueError(
-                f"Unsafe raw key binding {canonical!r}: contains shell "
-                "metacharacters."
+                f"Unsafe raw key binding {canonical!r}: a raw shell-native key "
+                "may contain only letters, digits, and ^ [ ] \\ - _."
             )
         return canonical
 

@@ -44,8 +44,13 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
 
 _KEYWORD_PATTERNS: list[re.Pattern[str]] = [
     re.compile(
+        # Value bound to non-whitespace, not the rest of the line: rank_context
+        # sanitizes a single ` | `-joined context line, so a greedy `[^\n]+`
+        # let one `token=` substring redact every later signal. Real secret
+        # values are token-shaped (no spaces); any space-separated remainder
+        # that is itself a secret is still caught by the high-entropy pass.
         r"(?P<key>password|passwd|secret|token|api_key|apikey)"
-        r"(?P<sep>\s*[=:]\s*)[^\n]+",
+        r"(?P<sep>\s*[=:]\s*)\S+",
         re.IGNORECASE,
     ),
 ]

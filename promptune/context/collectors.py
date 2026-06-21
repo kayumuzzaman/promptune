@@ -307,7 +307,10 @@ def collect_tech_stack() -> TechStackContext:
             for dep, fw in framework_map.items():
                 if dep in all_deps and fw not in frameworks:
                     frameworks.append(fw)
-        except (json.JSONDecodeError, OSError):
+        # UnicodeDecodeError (a ValueError) covers a non-UTF-8 manifest: skip
+        # framework detection for it rather than aborting the whole collector
+        # and losing already-detected languages (cf. the null-deps guard above).
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             pass
 
     # Python framework detection from pyproject.toml
@@ -329,7 +332,7 @@ def collect_tech_stack() -> TechStackContext:
                     and fw not in frameworks
                 ):
                     frameworks.append(fw)
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             pass
 
     # Package manager detection

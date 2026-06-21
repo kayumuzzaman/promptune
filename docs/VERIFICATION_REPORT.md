@@ -12,8 +12,8 @@
 | Date | 2026-06-21 |
 | Branch | main |
 | Python | 3.14.3 |
-| Total Tests | 1233 |
-| Test Result | **1227 passed, 6 skipped, 0 failed** |
+| Total Tests | 1237 |
+| Test Result | **1231 passed, 6 skipped, 0 failed** |
 | Coverage | **97.31%** (gate ≥ 85%) ✅ |
 | Ruff | **PASS** — 0 errors |
 | Mypy | **PASS** — 0 issues in 45 source files |
@@ -120,7 +120,7 @@
 
 ## Known Issues
 
-### -14. Launch-readiness audit + remediation (2026-06-21) — 2 findings fixed, full rescan clean
+### -14. Launch-readiness audit + remediation (2026-06-21) — 6 findings fixed (2 launch + 4 rescan)
 
 Live verification on `main` (`1b7da28`) passed: `ruff`, `mypy`,
 `actionlint`, full coverage, strict warning gates, package build, `twine check`,
@@ -174,6 +174,39 @@ close, owner-only IPC socket, clobber-safe hook installers.
   logging each hotkey paste as `accept`. Unlike the gate (no accept surface), the
   daemon pastes the result and offers undo, so a non-undo is arguably an implicit
   accept. Left as-is; documented.
+
+**Second rescan (2026-06-21) — 4 parallel fresh-eyes agents + inline core/daemon
+audit.** A follow-up "validate the full codebase" pass dispatched four read-only
+agents (core, providers, cli/context, daemon). cli/context and providers
+reported; core and daemon went unresponsive, so those two domains were
+re-audited inline. Four real findings surfaced — all fixed RED-first; none HIGH.
+The inline core+daemon review (engine, dedup, scorer, tier0, meta_prompt,
+preferences, templates, gate; clipboard, ipc, prewarm, the linux_x11/wayland
+subprocess surface, daemon `_on_hotkey`) found nothing further — notably **no
+shell-injection path**: selected/clipboard text reaches external tools only via
+stdin (`xclip`/`wl-copy` `input=`) or fixed Ctrl+C/V keycodes
+(`xdotool`/`ydotool key`), never a shell argument, and there is no `shell=True`.
+
+- **MED [RESOLVED]** `shell.py` — raw `--key` passthrough was validated by an
+  incomplete denylist (missing `< > ( ) \`) then emitted UNQUOTED into zsh
+  `bindkey {key}` / fish `bind {key}`, so a space-free process-substitution key
+  like `<(reboot)` executed when the widget is eval'd (bash was already
+  single-quoted). Replaced with a strict allowlist. Regression:
+  `test_raw_passthrough_process_substitution_rejected`.
+- **LOW [RESOLVED]** `history.py` — the DB and its WAL/SHM sidecars were created
+  under the default umask (group/other-readable) while storing prompts verbatim.
+  The store dir is now `0o700` and the DB `0o600`, matching the config hardening.
+  Regression: `test_history_db_and_dir_owner_only`.
+- **LOW [RESOLVED]** `context/sanitizer.py` — keyword redaction used a greedy
+  `[^\n]+` value, so on the single ` | `-joined context line one `token=`
+  substring redacted every later signal. Bounded to `\S+`; the high-entropy pass
+  still backstops space-separated secrets. Regression:
+  `test_sanitize_keyword_value_does_not_swallow_following_signals`.
+- **LOW [RESOLVED]** `context/collectors.py` — a non-UTF-8 `package.json` /
+  `pyproject.toml` raised `UnicodeDecodeError` (a `ValueError`, uncaught by the
+  framework-detection `except`), discarding already-detected languages. Added
+  `UnicodeDecodeError` to both clauses. Regression:
+  `test_tech_stack_non_utf8_manifest_keeps_languages`.
 
 ### -13. PR #21 Codex P2 follow-up after Claude rate limit (2026-06-20) — 2 findings [RESOLVED]
 

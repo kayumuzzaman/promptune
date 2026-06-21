@@ -21,6 +21,26 @@ def store(tmp_path) -> HistoryStore:
     s.close()
 
 
+def test_history_db_and_dir_owner_only(tmp_path) -> None:
+    """DB and its directory are owner-only — prompts are stored verbatim.
+
+    Regression: the store created history.db (and its WAL/SHM sidecars) under
+    the default umask (typically group/other-readable), leaking potentially
+    sensitive prompt text, inconsistent with the 0o600 config hardening.
+    """
+    import stat
+
+    db = tmp_path / "store" / "history.db"
+    s = HistoryStore(db_path=db)
+    try:
+        s.record(_make_entry())
+    finally:
+        s.close()
+
+    assert stat.S_IMODE(db.stat().st_mode) == 0o600
+    assert stat.S_IMODE(db.parent.stat().st_mode) == 0o700
+
+
 def _make_entry(
     original: str = "fix the bug",
     enhanced: str = "Diagnose and fix the auth bug",

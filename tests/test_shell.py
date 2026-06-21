@@ -110,6 +110,18 @@ class TestTranslateKey:
         with pytest.raises(ValueError):
             _translate_key("'; rm -rf X; '", "bash")
 
+    def test_raw_passthrough_process_substitution_rejected(self) -> None:
+        import pytest
+
+        # Space-free process-substitution payloads slip a denylist that omits
+        # < > ( ), yet the raw key is emitted UNQUOTED into zsh `bindkey {key}`
+        # / fish `bind {key}`, so `<(reboot)` would execute `reboot` on eval.
+        # The allowlist must reject every such payload.
+        for payload in ("<(reboot)", ">(reboot)", "x<(reboot)", "a(b)"):
+            for shell in ("zsh", "fish"):
+                with pytest.raises(ValueError):
+                    _translate_key(payload, shell)
+
     def test_empty_char_after_modifier_rejected(self) -> None:
         import pytest
 
