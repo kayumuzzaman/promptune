@@ -1,8 +1,15 @@
 # Promptune
 
+[![CI](https://github.com/kayumuzzaman/promptune/actions/workflows/ci.yml/badge.svg)](https://github.com/kayumuzzaman/promptune/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/promptune.svg)](https://pypi.org/project/promptune/)
+[![Python versions](https://img.shields.io/pypi/pyversions/promptune.svg)](https://pypi.org/project/promptune/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An intelligent AI prompt enhancer. Write a rough prompt, let Promptune analyze and improve it using rule-based, local, or cloud AI — then review the result in a rich TUI before using it.
 
 Promptune runs **locally**. Tier 0 (rule-based) needs no API key and no network. Local and cloud tiers are opt-in.
+
+![Promptune enhancing a prompt in the terminal](docs/assets/option-a.gif)
 
 ## Contents
 
