@@ -10,7 +10,7 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-22 |
-| Branch | chore/oss-polish (remote PR branch) |
+| Branch | main @ b8a82fd (PR #23 merged) |
 | Python | 3.14.3 |
 | Total Tests | 1245 |
 | Test Result | **1239 passed, 6 skipped, 0 failed** |
@@ -120,17 +120,33 @@
 
 ## Known Issues
 
+### -19. Post-PR #23 release-readiness recheck (2026-06-22) — ready to tag [VERIFIED]
+
+After PR #23 merged, local `main` was fast-forwarded to remote merge commit
+`b8a82fd`. Latest `main` CI and Gemini Code Review are green, no open PRs were
+found, and release metadata is aligned: package version is `0.2.0`, PyPI latest
+is still `0.1.0`, only GitHub tag/release `v0.1.0` exists, `PUBLISH_TO_PYPI` is
+`true`, and the GitHub `pypi` environment exists. Local release gates passed:
+`ruff`, `mypy`, `actionlint`, `compileall`, full coverage (`1239 passed, 6
+skipped`, `97.38%`), strict warning runs for `ResourceWarning` and
+`PytestUnhandledThreadExceptionWarning`, package build, `twine check`, fresh
+wheel install, `promptune --version`, `python -m promptune --help`, Tier 0
+enhance smoke, and JSON score smoke. No new blocker was found. Remaining
+pre-tag caveat: PyPI trusted-publisher configuration on pypi.org cannot be
+confirmed from this checkout; the GitHub-side environment and workflow are
+present.
+
 ### -18. OSS polish verification (2026-06-22) — docs polish, no blockers [VERIFIED]
 
-Open-source polish branch `chore/oss-polish` adds README health badges, promotes
-the existing `docs/assets/option-a.gif` as the README hero demo, adds
-`CODE_OF_CONDUCT.md`, and adds `docs/assets/demo.tape` as a reproducible VHS
-source for a future fresh demo GIF. Local verification passed: docs-readiness
-tests (`12 passed`), `ruff`, `mypy`, full coverage (`1239 passed, 6 skipped`,
-`97.38%`), package build, `twine check`, fresh wheel install, `promptune
---version`, `python -m promptune --help`, and Tier 0 enhance smoke. `vhs` was
-not installed locally, so the tape was not rendered in this pass; the README
-uses the already-checked-in GIF.
+PR #23 added README health badges, promoted the existing
+`docs/assets/option-a.gif` as the README hero demo, added
+`CODE_OF_CONDUCT.md`, and added `docs/assets/demo.tape` as a reproducible VHS
+source for a future fresh demo GIF. Local verification on the PR branch passed:
+docs-readiness tests (`12 passed`), `ruff`, `mypy`, full coverage (`1239
+passed, 6 skipped`, `97.38%`), package build, `twine check`, fresh wheel
+install, `promptune --version`, `python -m promptune --help`, and Tier 0
+enhance smoke. `vhs` was not installed locally, so the tape was not rendered in
+that pass; the README uses the already-checked-in GIF.
 
 ### -17. Post-merge release-readiness recheck (2026-06-21) — no new blockers [VERIFIED]
 
