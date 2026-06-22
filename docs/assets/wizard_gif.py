@@ -8,6 +8,8 @@ One-off rendering script (long literal frame lines); line-length lint disabled.
 # ruff: noqa: E501
 from __future__ import annotations
 
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 940, 600
@@ -118,7 +120,7 @@ screen.append(
 )
 snap(2200)
 
-out = "/Users/kayumuzzaman/Projects/promptune/docs/assets/wizard-nokey.gif"
+out = str(Path(__file__).resolve().parent / "wizard-nokey.gif")
 frames[0].save(
     out, save_all=True, append_images=frames[1:],
     duration=durs, loop=0, optimize=True,
