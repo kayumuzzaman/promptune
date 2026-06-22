@@ -10,7 +10,8 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-22 |
-| Branch | main (post-PR #23 release-readiness refresh) |
+| Branch | main (`b8a82fd`, = origin/main) |
+| Release | **v0.2.0 shipped** — annotated tag pushed, Release workflow green, PyPI latest=0.2.0, GitHub Release `v0.2.0` Latest |
 | Python | 3.14.3 |
 | Total Tests | 1245 |
 | Test Result | **1239 passed, 6 skipped, 0 failed** |
