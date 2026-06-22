@@ -10,7 +10,8 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-22 |
-| Branch | main (post-PR #23 release-readiness refresh) |
+| Branch | `fix/readme-pypi-images-v0.2.1` (atop verified `main` `8630007`) |
+| Release | **v0.2.0 shipped** (PyPI latest=`0.2.0`, GitHub Release `v0.2.0` Latest, tag pushed, Release workflow green). **v0.2.1** (PyPI README image fix) prepared in this branch — not yet tagged |
 | Python | 3.14.3 |
 | Total Tests | 1245 |
 | Test Result | **1239 passed, 6 skipped, 0 failed** |
@@ -120,7 +121,42 @@
 
 ## Known Issues
 
-### -19. Post-PR #23 release-readiness recheck (2026-06-22) — ready to tag [VERIFIED]
+### -20. v0.2.0 shipped + v0.2.1 PyPI image fix (2026-06-22) — [VERIFIED]
+
+**v0.2.0 released.** On user go-ahead, an annotated tag `v0.2.0` was pushed on
+`b8a82fd`; the Release workflow ran green (validate 3.12/3.13, linux-integration,
+build + `twine check` + wheel smoke, **PyPI publish via OIDC**, **GitHub
+Release**). PyPI now serves `0.1.0` and `0.2.0` (latest=`0.2.0`); GitHub Release
+`v0.2.0` is Latest. This supersedes the "ready to tag" / "PyPI latest 0.1.0"
+state recorded in §-19 below — that entry predates the actual ship and is left
+for history.
+
+**Post-release issue — README images broken on PyPI.** The README referenced the
+hero/demo GIFs by repository-relative paths (`docs/assets/*.gif`), which PyPI
+cannot resolve, so they rendered broken on the project page. Two compounding
+causes: (1) relative paths never resolve on PyPI, and (2) the GitHub repo is
+still **private**, so `raw.githubusercontent.com` returns 404 anonymously — i.e.
+absolute raw URLs alone do not fix it while the repo is private. v0.2.1 switches
+all five GIFs to absolute `raw.githubusercontent.com/.../main/...` URLs, moves
+the CI badge from GitHub's native `badge.svg` (flaky through PyPI's image proxy)
+to a shields.io workflow-status badge, and makes the License badge link
+absolute. **These images will render on PyPI only once the repo is made public**
+(or the assets are otherwise publicly hosted); the README change is the
+necessary half of that fix. v0.2.1 is prepared but not yet tagged.
+
+**PR #24 review (Codex P2 ×2) — both reconciled here.** Codex flagged that
+PR #24's Last-Verified row pinned the older merge commit `b8a82fd` as
+`= origin/main` (main had advanced to `8630007`) and that its new "shipped"
+Release row contradicted the still-"ready to tag" §-19. Both are valid; this
+entry records the shipped state and §-19 is marked superseded, and the
+Last-Verified Branch row now names the actually-verified commit. PR #24 is
+superseded by the v0.2.1 branch.
+
+**Gates green for v0.2.1:** `ruff` clean, `mypy` clean (45 files),
+`1239 passed, 6 skipped` (97.38% cov, gate ≥ 85%), `python -m build` +
+`twine check` PASSED for `promptune-0.2.1` sdist/wheel.
+
+### -19. Post-PR #23 release-readiness recheck (2026-06-22) — ready to tag [SUPERSEDED by §-20 — v0.2.0 has since shipped]
 
 After PR #23 merged, local `main` was fast-forwarded to remote merge commit
 `b8a82fd`. Latest `main` CI and Gemini Code Review are green, no open PRs were
