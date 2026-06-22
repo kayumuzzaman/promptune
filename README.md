@@ -1,15 +1,15 @@
 # Promptune
 
-[![CI](https://github.com/kayumuzzaman/promptune/actions/workflows/ci.yml/badge.svg)](https://github.com/kayumuzzaman/promptune/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/kayumuzzaman/promptune/ci.yml?branch=main&label=CI)](https://github.com/kayumuzzaman/promptune/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/promptune.svg)](https://pypi.org/project/promptune/)
 [![Python versions](https://img.shields.io/pypi/pyversions/promptune.svg)](https://pypi.org/project/promptune/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/kayumuzzaman/promptune/blob/main/LICENSE)
 
 An intelligent AI prompt enhancer. Write a rough prompt, let Promptune analyze and improve it using rule-based, local, or cloud AI — then review the result in a rich TUI before using it.
 
 Promptune runs **locally**. Tier 0 (rule-based) needs no API key and no network. Local and cloud tiers are opt-in.
 
-![Promptune enhancing a prompt in the terminal](docs/assets/option-a.gif)
+![Promptune enhancing a prompt in the terminal](https://raw.githubusercontent.com/kayumuzzaman/promptune/main/docs/assets/option-a.gif)
 
 ## Contents
 
@@ -211,7 +211,7 @@ Now press **Ctrl+E** in your terminal to enhance the current line.
 
 _The setup wizard:_
 
-![promptune config init walkthrough](docs/assets/option-settings.gif)
+![promptune config init walkthrough](https://raw.githubusercontent.com/kayumuzzaman/promptune/main/docs/assets/option-settings.gif)
 
 ## CLI Commands
 
@@ -223,7 +223,7 @@ Enhance a prompt using AI. Opens a TUI with Accept/Edit/Reject workflow by defau
 
 _With `--no-tui`, the enhanced prompt prints straight to stdout — pipe it anywhere:_
 
-![promptune enhance --no-tui in a shell](docs/assets/option-a.gif)
+![promptune enhance --no-tui in a shell](https://raw.githubusercontent.com/kayumuzzaman/promptune/main/docs/assets/option-a.gif)
 
 ```bash
 # Basic — opens TUI with before/after comparison
@@ -364,7 +364,7 @@ Promptune ships an [MCP](https://modelcontextprotocol.io) server (`promptune mcp
 
 _Claude Code calling the `enhance` tool, then acting on the refined prompt:_
 
-![promptune MCP tool inside Claude Code](docs/assets/option-b.gif)
+![promptune MCP tool inside Claude Code](https://raw.githubusercontent.com/kayumuzzaman/promptune/main/docs/assets/option-b.gif)
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
@@ -427,7 +427,7 @@ The auto-enhance hook intercepts prompts you submit in an AI coding tool, and wh
 
 _A weak prompt silently enhanced and injected inside Codex (`!` bypasses):_
 
-![promptune auto-enhance gate inside Codex](docs/assets/option-c.gif)
+![promptune auto-enhance gate inside Codex](https://raw.githubusercontent.com/kayumuzzaman/promptune/main/docs/assets/option-c.gif)
 
 ### Which tools auto-trigger?
 

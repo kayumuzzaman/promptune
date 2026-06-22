@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-22
+
+### Fixed
+
+- README images now render on PyPI. The hero/demo GIFs used repository-relative paths (`docs/assets/*.gif`) which PyPI cannot resolve, so they showed as broken on the project page; they now use absolute `https://raw.githubusercontent.com/.../main/...` URLs. The CI badge was switched from GitHub's native `badge.svg` (flaky through PyPI's image proxy) to a shields.io workflow-status badge, and the License badge now links to the LICENSE file by absolute URL. GitHub rendering is unchanged.
+
 ## [0.2.0] - 2026-06-21
 
 ### Fixed
