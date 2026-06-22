@@ -10,7 +10,7 @@
 | Field | Value |
 |-------|-------|
 | Date | 2026-06-22 |
-| Branch | main @ b8a82fd (PR #23 merged) |
+| Branch | main (post-PR #23 release-readiness refresh) |
 | Python | 3.14.3 |
 | Total Tests | 1245 |
 | Test Result | **1239 passed, 6 skipped, 0 failed** |
