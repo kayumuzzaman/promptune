@@ -9,8 +9,8 @@
 
 | Field | Value |
 |-------|-------|
-| Date | 2026-06-21 |
-| Branch | fix/sync-0.2.0-fixes-to-main (PR #22 → main) |
+| Date | 2026-06-22 |
+| Branch | chore/oss-polish (remote PR branch) |
 | Python | 3.14.3 |
 | Total Tests | 1245 |
 | Test Result | **1239 passed, 6 skipped, 0 failed** |
@@ -119,6 +119,34 @@
 ---
 
 ## Known Issues
+
+### -18. OSS polish verification (2026-06-22) — docs polish, no blockers [VERIFIED]
+
+Open-source polish branch `chore/oss-polish` adds README health badges, promotes
+the existing `docs/assets/option-a.gif` as the README hero demo, adds
+`CODE_OF_CONDUCT.md`, and adds `docs/assets/demo.tape` as a reproducible VHS
+source for a future fresh demo GIF. Local verification passed: docs-readiness
+tests (`12 passed`), `ruff`, `mypy`, full coverage (`1239 passed, 6 skipped`,
+`97.38%`), package build, `twine check`, fresh wheel install, `promptune
+--version`, `python -m promptune --help`, and Tier 0 enhance smoke. `vhs` was
+not installed locally, so the tape was not rendered in this pass; the README
+uses the already-checked-in GIF.
+
+### -17. Post-merge release-readiness recheck (2026-06-21) — no new blockers [VERIFIED]
+
+After PR #22 merged to `main`, live verification was refreshed on merge commit
+`a8686e2`. Local `main` matches `origin/main`; PR #22 is merged; latest `main`
+CI and Gemini Code Review are green; no open PRs or issues were found. Local
+gates passed: `ruff`, `mypy`, `actionlint`, `compileall`, full coverage
+(`1239 passed, 6 skipped`, `97.38%`), both strict warning runs
+(`-W error::ResourceWarning` and
+`-W error::pytest.PytestUnhandledThreadExceptionWarning`), docs/install/main
+smoke tests, package build, `twine check`, fresh wheel install, `promptune
+--version`, `python -m promptune --help`, Tier 0 enhance, and JSON score smoke.
+Release metadata is aligned for the next release: package version is `0.2.0`,
+GitHub/PyPI only have `0.1.0`, `PUBLISH_TO_PYPI=true`, and the GitHub `pypi`
+environment exists. Remaining release risk is the existing deferred P3/P2 work
+below; no new launch blocker was found in this pass.
 
 ### -16. PR #22 Codex second follow-up (2026-06-21) — 2 findings [RESOLVED]
 
