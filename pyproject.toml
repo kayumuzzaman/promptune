@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["prompt", "cli", "ai", "terminal"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: MacOS",
