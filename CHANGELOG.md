@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-06-22
+## [0.2.1] - 2026-06-23
+
+### Changed
+
+- `Development Status` trove classifier bumped from `3 - Alpha` to `4 - Beta`, reflecting the feature-complete, well-tested, security-hardened state of the project for its public release.
 
 ### Fixed
 
